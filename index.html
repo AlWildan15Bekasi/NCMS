@@ -676,10 +676,14 @@
                             <div class="cyber-panel p-6 col-span-1 xl:col-span-2">
                                 <div class="flex justify-between items-center border-b custom-border pb-2 mb-4">
                                     <h3 class="font-bold text-muted uppercase text-[10px] tracking-[0.3em]"><i class="fas fa-history mr-2"></i> Daily Replacement Log</h3>
-                                    <div class="flex items-center gap-2">
-                                        <input type="date" id="infal-log-date" class="bg-transparent border custom-border text-lighttext dark:text-gray-300 text-xs px-2 py-1 rounded" onchange="loadInfalLog()">
-                                        <button onclick="loadInfalLog()" class="text-xs text-neoncyan hover:text-neonblue transition"><i class="fas fa-sync-alt"></i></button>
-                                    </div>
+                                   <div class="flex items-center gap-2">
+                                    <select id="infal-log-sort" class="bg-transparent border custom-border text-lighttext dark:text-gray-300 text-xs px-2 py-1 rounded cursor-pointer outline-none" onchange="loadInfalLog()">
+                                        <option value="sesi_jp">Urutkan Sesi (JP)</option>
+                                        <option value="guru_keluar">Urutkan Nama Guru</option>
+                                    </select>
+                                    <input type="date" id="infal-log-date" class="bg-transparent border custom-border text-lighttext dark:text-gray-300 text-xs px-2 py-1 rounded" onchange="loadInfalLog()">
+                                    <button onclick="loadInfalLog()" class="text-xs text-neoncyan hover:text-neonblue transition"><i class="fas fa-sync-alt"></i></button>
+                                </div>
                                 </div>
                                 <div class="overflow-y-auto max-h-[300px] custom-scrollbar">
                                     <table class="w-full text-left text-[10px] md:text-xs text-lighttext dark:text-gray-300">
@@ -2246,11 +2250,17 @@
         }
 
         async function loadInfalLog() {
-            const date = document.getElementById('infal-log-date').value, tbody = document.getElementById('table-infal-history-body');
+            const date = document.getElementById('infal-log-date').value;
+            const sortVar = document.getElementById('infal-log-sort') ? document.getElementById('infal-log-sort').value : 'sesi_jp';
+            const tbody = document.getElementById('table-infal-history-body');
+            
             tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted italic"><i class="fas fa-spinner fa-spin"></i> Memuat log...</td></tr>`;
             
             try {
-                const { data, error } = await supabaseClient.from('data_infal').select('*').eq('tanggal', date);
+                const { data, error } = await supabaseClient.from('data_infal')
+                    .select('*')
+                    .eq('tanggal', date)
+                    .order(sortVar, { ascending: true });
                 if(data && data.length > 0) {
                     tbody.innerHTML = data.map(i => `<tr class="hover:bg-blue-50 dark:hover:bg-neoncyan/5"><td class="p-2 font-mono text-muted text-[10px]">${i.sesi_jp}</td><td class="p-2 font-bold text-xs">${i.id_kelas}</td><td class="p-2 font-bold text-xs text-rose-600 dark:text-neonpink">${i.guru_keluar}</td><td class="p-2 font-bold text-xs text-green-600 dark:text-neongreen">${i.guru_pengganti}</td><td class="p-2 italic text-[10px] text-muted">${i.alasan}</td></tr>`).join('');
                 } else { tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 italic text-muted">Belum ada data infal di tanggal ini.</td></tr>`; }
@@ -3195,12 +3205,18 @@
             areaEl.innerHTML = fullHtml;
         }
 
-        async function fetchAndBuildRekapInfal(areaEl) {
+       async function fetchAndBuildRekapInfal(areaEl) {
             let start = document.getElementById('infal-print-start').value;
             let end = document.getElementById('infal-print-end').value;
             
             try {
-                const { data } = await supabaseClient.from('data_infal').select('*').gte('tanggal', start).lte('tanggal', end);
+                // Diurutkan secara otomatis berdasarkan Tanggal lalu Sesi (JP)
+                const { data } = await supabaseClient.from('data_infal')
+                    .select('*')
+                    .gte('tanggal', start)
+                    .lte('tanggal', end)
+                    .order('tanggal', { ascending: true })
+                    .order('sesi_jp', { ascending: true });
                 
                 let tbodyHtml = '';
                 if(data && data.length > 0) {
