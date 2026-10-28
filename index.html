@@ -676,22 +676,25 @@
                             <div class="cyber-panel p-6 col-span-1 xl:col-span-2">
                                 <div class="flex justify-between items-center border-b custom-border pb-2 mb-4">
                                     <h3 class="font-bold text-muted uppercase text-[10px] tracking-[0.3em]"><i class="fas fa-history mr-2"></i> Daily Replacement Log</h3>
-                                   <div class="flex items-center gap-2">
-                                    <select id="infal-log-sort" class="bg-transparent border custom-border text-lighttext dark:text-gray-300 text-xs px-2 py-1 rounded cursor-pointer outline-none" onchange="loadInfalLog()">
-                                        <option value="sesi_jp">Urutkan Sesi (JP)</option>
-                                        <option value="guru_keluar">Urutkan Nama Guru</option>
-                                    </select>
-                                    <input type="date" id="infal-log-date" class="bg-transparent border custom-border text-lighttext dark:text-gray-300 text-xs px-2 py-1 rounded" onchange="loadInfalLog()">
-                                    <button onclick="loadInfalLog()" class="text-xs text-neoncyan hover:text-neonblue transition"><i class="fas fa-sync-alt"></i></button>
-                                </div>
+                                    <div class="flex items-center gap-2">
+                                        <input type="date" id="infal-log-date" class="bg-transparent border custom-border text-lighttext dark:text-gray-300 text-xs px-2 py-1 rounded" onchange="loadInfalLog()">
+                                        <button onclick="loadInfalLog()" class="text-xs text-neoncyan hover:text-neonblue transition"><i class="fas fa-sync-alt"></i></button>
+                                    </div>
                                 </div>
                                 <div class="overflow-y-auto max-h-[300px] custom-scrollbar">
                                     <table class="w-full text-left text-[10px] md:text-xs text-lighttext dark:text-gray-300">
                                         <thead class="bg-gray-100 dark:bg-darkbg text-muted uppercase tracking-widest sticky top-0">
-                                            <tr><th class="p-2 border-b custom-border">Sesi</th><th class="p-2 border-b custom-border">Kelas</th><th class="p-2 border-b custom-border text-neonpink">Guru Keluar</th><th class="p-2 border-b custom-border text-neongreen">Guru Pengganti</th><th class="p-2 border-b custom-border">Alasan</th></tr>
+                                            <tr>
+                                                <th class="p-2 border-b custom-border cursor-pointer hover:text-neoncyan transition group" onclick="sortInfalLog('sesi_jp')">Sesi <i class="fas fa-sort ml-1 opacity-50 group-hover:opacity-100 transition" id="sort-icon-sesi_jp"></i></th>
+                                                <th class="p-2 border-b custom-border cursor-pointer hover:text-neoncyan transition group" onclick="sortInfalLog('id_kelas')">Kelas <i class="fas fa-sort ml-1 opacity-50 group-hover:opacity-100 transition" id="sort-icon-id_kelas"></i></th>
+                                                <th class="p-2 border-b custom-border text-neonpink cursor-pointer hover:text-neoncyan transition group" onclick="sortInfalLog('guru_keluar')">Guru Keluar <i class="fas fa-sort ml-1 opacity-50 group-hover:opacity-100 transition" id="sort-icon-guru_keluar"></i></th>
+                                                <th class="p-2 border-b custom-border text-neongreen cursor-pointer hover:text-neoncyan transition group" onclick="sortInfalLog('guru_pengganti')">Guru Pengganti <i class="fas fa-sort ml-1 opacity-50 group-hover:opacity-100 transition" id="sort-icon-guru_pengganti"></i></th>
+                                                <th class="p-2 border-b custom-border">Alasan</th>
+                                                <th class="p-2 border-b custom-border text-center">Aksi</th>
+                                            </tr>
                                         </thead>
                                         <tbody id="table-infal-history-body" class="divide-y custom-border">
-                                            <tr><td colspan="5" class="text-center py-4 italic text-muted">Awaiting API Sync...</td></tr>
+                                            <tr><td colspan="6" class="text-center py-4 italic text-muted">Awaiting API Sync...</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -2249,23 +2252,83 @@
             btn.innerHTML = '<i class="fas fa-upload"></i> TRANSMIT DATA'; btn.disabled = false;
         }
 
+        let currentInfalSortColumn = 'sesi_jp';
+        let currentInfalSortAscending = true;
+
+        function sortInfalLog(column) {
+            // Ubah arah panah jika kolom yang diklik sama
+            if (currentInfalSortColumn === column) {
+                currentInfalSortAscending = !currentInfalSortAscending;
+            } else {
+                currentInfalSortColumn = column;
+                currentInfalSortAscending = true;
+            }
+            
+            // Animasi & Ganti Ikon Panah
+            ['sesi_jp', 'id_kelas', 'guru_keluar', 'guru_pengganti'].forEach(col => {
+                const icon = document.getElementById(`sort-icon-${col}`);
+                if(icon) {
+                    icon.className = 'fas fa-sort ml-1 opacity-50 group-hover:opacity-100 transition'; // Reset ke default
+                    if (col === currentInfalSortColumn) {
+                        icon.className = currentInfalSortAscending ? 'fas fa-sort-up ml-1 text-neoncyan opacity-100' : 'fas fa-sort-down ml-1 text-neoncyan opacity-100';
+                    }
+                }
+            });
+            
+            loadInfalLog();
+        }
+
         async function loadInfalLog() {
             const date = document.getElementById('infal-log-date').value;
-            const sortVar = document.getElementById('infal-log-sort') ? document.getElementById('infal-log-sort').value : 'sesi_jp';
             const tbody = document.getElementById('table-infal-history-body');
-            
-            tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted italic"><i class="fas fa-spinner fa-spin"></i> Memuat log...</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted italic"><i class="fas fa-spinner fa-spin"></i> Memuat log...</td></tr>`;
             
             try {
+                // Supabase diurutkan berdasarkan panah yang sedang aktif
                 const { data, error } = await supabaseClient.from('data_infal')
                     .select('*')
                     .eq('tanggal', date)
-                    .order(sortVar, { ascending: true });
+                    .order(currentInfalSortColumn, { ascending: currentInfalSortAscending });
+                    
                 if(data && data.length > 0) {
-                    tbody.innerHTML = data.map(i => `<tr class="hover:bg-blue-50 dark:hover:bg-neoncyan/5"><td class="p-2 font-mono text-muted text-[10px]">${i.sesi_jp}</td><td class="p-2 font-bold text-xs">${i.id_kelas}</td><td class="p-2 font-bold text-xs text-rose-600 dark:text-neonpink">${i.guru_keluar}</td><td class="p-2 font-bold text-xs text-green-600 dark:text-neongreen">${i.guru_pengganti}</td><td class="p-2 italic text-[10px] text-muted">${i.alasan}</td></tr>`).join('');
-                } else { tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 italic text-muted">Belum ada data infal di tanggal ini.</td></tr>`; }
+                    tbody.innerHTML = data.map(i => `<tr class="hover:bg-blue-50 dark:hover:bg-neoncyan/5">
+                        <td class="p-2 font-mono text-muted text-[10px]">${i.sesi_jp}</td>
+                        <td class="p-2 font-bold text-xs">${i.id_kelas}</td>
+                        <td class="p-2 font-bold text-xs text-rose-600 dark:text-neonpink">${i.guru_keluar}</td>
+                        <td class="p-2 font-bold text-xs text-green-600 dark:text-neongreen">${i.guru_pengganti}</td>
+                        <td class="p-2 italic text-[10px] text-muted">${i.alasan}</td>
+                        <td class="p-2 flex justify-center items-center">
+                            <button onclick="deleteInfalLog('${i.tanggal}', '${i.sesi_jp}', '${i.id_kelas}', '${i.guru_keluar}')" class="text-neonpink hover:text-white hover:bg-neonpink w-6 h-6 rounded flex items-center justify-center transition" title="Hapus Data">
+                                <i class="fas fa-trash-alt text-[10px]"></i>
+                            </button>
+                        </td>
+                    </tr>`).join('');
+                } else { 
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 italic text-muted">Belum ada data infal di tanggal ini.</td></tr>`; 
+                }
             } catch (err) {
                 console.error(err);
+            }
+        }
+
+        async function deleteInfalLog(tanggal, sesi, kelas, guruKeluar) {
+            if(confirm('Yakin ingin menghapus data replacement ini?')) {
+                try {
+                    const { error } = await supabaseClient.from('data_infal')
+                        .delete()
+                        .eq('tanggal', tanggal)
+                        .eq('sesi_jp', sesi)
+                        .eq('id_kelas', kelas)
+                        .eq('guru_keluar', guruKeluar);
+                        
+                    if(!error) {
+                        showToast('Data berhasil dihapus', 'success');
+                        loadInfalLog(); 
+                        loadDashboard(true); // Sinkronisasi ulang dashboard
+                    } else {
+                        showToast('Gagal menghapus data', 'error');
+                    }
+                } catch(e) { console.error(e); }
             }
         }
         
@@ -3205,18 +3268,18 @@
             areaEl.innerHTML = fullHtml;
         }
 
-       async function fetchAndBuildRekapInfal(areaEl) {
+      async function fetchAndBuildRekapInfal(areaEl) {
             let start = document.getElementById('infal-print-start').value;
             let end = document.getElementById('infal-print-end').value;
             
             try {
-                // Diurutkan secara otomatis berdasarkan Tanggal lalu Sesi (JP)
+                // PDF 100% ngikutin arah panah sorting yang lagi aktif di layar
                 const { data } = await supabaseClient.from('data_infal')
                     .select('*')
                     .gte('tanggal', start)
                     .lte('tanggal', end)
-                    .order('tanggal', { ascending: true })
-                    .order('sesi_jp', { ascending: true });
+                    .order(currentInfalSortColumn, { ascending: currentInfalSortAscending })
+                    .order('tanggal', { ascending: true }); // Fallback urutan berdasarkan tgl
                 
                 let tbodyHtml = '';
                 if(data && data.length > 0) {
