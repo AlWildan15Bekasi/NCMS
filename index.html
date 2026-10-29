@@ -2274,27 +2274,48 @@
             btn.innerHTML = '<i class="fas fa-upload"></i> TRANSMIT DATA'; btn.disabled = false;
         }
 
-        let currentInfalSortColumn = 'sesi_jp';
-        let currentInfalSortAscending = true;
+       // BUKU CATATAN (ARRAY) UNTUK SMART 2-LEVEL SORTING
+        let activeSorts = [{ column: 'sesi_jp', ascending: true }];
         let pendingDeleteData = null; // Memori global untuk hapus data
 
-        function sortInfalLog(column) {
-            if (currentInfalSortColumn === column) {
-                currentInfalSortAscending = !currentInfalSortAscending;
+        function sortInfalLog(clickedColumn) {
+            // Cari apakah kolom ini sudah ada di buku catatan
+            const existingIndex = activeSorts.findIndex(s => s.column === clickedColumn);
+            
+            if (existingIndex !== -1) {
+                // Jika sudah ada (diklik lagi), balik arah panahnya, lalu pindahkan dia ke posisi teratas (Prioritas 1)
+                const currentObj = activeSorts[existingIndex];
+                currentObj.ascending = !currentObj.ascending;
+                activeSorts.splice(existingIndex, 1);
+                activeSorts.unshift(currentObj); // Masukkan ke awal array
             } else {
-                currentInfalSortColumn = column;
-                currentInfalSortAscending = true;
+                // Jika kolom baru, jadikan dia Prioritas 1
+                activeSorts.unshift({ column: clickedColumn, ascending: true });
             }
             
+            // Aturan 2-Level: Buang antrian ke-3 dan seterusnya
+            if (activeSorts.length > 2) {
+                activeSorts.length = 2;
+            }
+            
+            // Render ulang semua ikon panah secara mandiri
             ['sesi_jp', 'id_kelas', 'guru_keluar', 'guru_pengganti'].forEach(col => {
                 const icon = document.getElementById(`sort-icon-${col}`);
                 if(icon) {
-                    icon.className = 'fas fa-sort ml-1 opacity-50 group-hover:opacity-100 transition';
-                    if (col === currentInfalSortColumn) {
-                        icon.className = currentInfalSortAscending ? 'fas fa-sort-up ml-1 text-neoncyan opacity-100' : 'fas fa-sort-down ml-1 text-neoncyan opacity-100';
+                    // Cari status kolom ini di buku catatan
+                    const sortData = activeSorts.find(s => s.column === col);
+                    
+                    if (sortData) {
+                        // Jika ada di memori, nyalakan panahnya (warna tergantung prioritas)
+                        let colorClass = (activeSorts[0].column === col) ? 'text-neoncyan' : 'text-neoncyan/50'; 
+                        icon.className = sortData.ascending ? `fas fa-sort-up ml-1 ${colorClass} opacity-100` : `fas fa-sort-down ml-1 ${colorClass} opacity-100`;
+                    } else {
+                        // Jika tidak ada di memori, kembalikan ke warna netral abu-abu pudar
+                        icon.className = 'fas fa-sort ml-1 opacity-30 group-hover:opacity-100 transition';
                     }
                 }
             });
+            
             loadInfalLog();
         }
 
@@ -2304,17 +2325,18 @@
             tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted italic"><i class="fas fa-spinner fa-spin"></i> Memuat log...</td></tr>`;
             
             try {
-                // Multiple Sorting (Bertingkat)
                 let query = supabaseClient.from('data_infal')
                     .select('*')
-                    .eq('tanggal', date)
-                    .order(currentInfalSortColumn, { ascending: currentInfalSortAscending });
+                    .eq('tanggal', date);
                 
-                // Jika user sort nama, prioritas kedua otomatis JP. Dan sebaliknya.
-                if (currentInfalSortColumn !== 'sesi_jp') {
-                    query = query.order('sesi_jp', { ascending: true });
-                } else {
-                    query = query.order('guru_keluar', { ascending: true });
+                // Tempelkan perintah .order() secara berantai (Looping dari Prioritas 1 ke 2)
+                activeSorts.forEach(sortObj => {
+                    query = query.order(sortObj.column, { ascending: sortObj.ascending });
+                });
+
+                // Fallback pamungkas (Kalau gak ada yang difilter, balikin ke JP)
+                if(!activeSorts.find(s => s.column === 'sesi_jp')) {
+                     query = query.order('sesi_jp', { ascending: true });
                 }
 
                 const { data, error } = await query;
@@ -3316,22 +3338,19 @@
             let end = document.getElementById('infal-print-end').value;
             
             try {
-                // Menyiapkan Chained Order (Multiple Sorting) agar PDF sinkron dengan tabel layar
+                // Tarik data dengan metode rentang tanggal
                 let query = supabaseClient.from('data_infal')
                     .select('*')
                     .gte('tanggal', start)
-                    .lte('tanggal', end)
-                    .order(currentInfalSortColumn, { ascending: currentInfalSortAscending });
+                    .lte('tanggal', end);
                 
-                // Prioritas kedua agar tidak berantakan
-                if (currentInfalSortColumn !== 'sesi_jp') {
-                    query = query.order('sesi_jp', { ascending: true });
-                } else {
-                    query = query.order('guru_keluar', { ascending: true });
-                }
-                
-                // Prioritas terakhir, selalu urut berdasarkan tanggal
+                // Pasang urutan Tanggal sebagai BOS BESAR di PDF
                 query = query.order('tanggal', { ascending: true });
+
+                // Tumpuk dengan 2 Prioritas Sorting yang lagi aktif di layar 
+                activeSorts.forEach(sortObj => {
+                    query = query.order(sortObj.column, { ascending: sortObj.ascending });
+                });
 
                 const { data } = await query;
                 
