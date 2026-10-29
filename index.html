@@ -1143,6 +1143,28 @@
         </div>
     </div>
 
+    <!-- CUSTOM CONFIRM DELETE MODAL -->
+    <div class="modal-overlay" id="delete-confirm-modal">
+        <div class="modal-content relative max-w-md border-neonpink dark:shadow-[0_0_30px_rgba(255,0,127,0.1)]">
+            <button onclick="closeModal('delete-confirm-modal')" class="absolute top-4 right-4 text-muted hover:text-neonpink transition text-xl"><i class="fas fa-times"></i></button>
+            <div class="flex flex-col items-center text-center mt-2">
+                <div class="w-16 h-16 rounded-full bg-neonpink/20 text-neonpink flex items-center justify-center border-2 border-neonpink mb-4">
+                    <i class="fas fa-exclamation-triangle text-2xl"></i>
+                </div>
+                <h2 class="text-lg font-bold text-lighttext dark:text-white uppercase tracking-widest mb-2">Konfirmasi Hapus</h2>
+                <p class="text-sm text-lighttext dark:text-gray-300 mb-2" id="delete-confirm-text">Yakin ingin menghapus data ini?</p>
+                <p class="text-[10px] text-neonpink font-bold uppercase tracking-widest mb-6 bg-neonpink/10 px-3 py-1 rounded">Tindakan ini tidak bisa dibatalkan</p>
+                
+                <div class="flex gap-3 w-full justify-center">
+                    <button onclick="closeModal('delete-confirm-modal')" class="btn-outline-cyber px-6 py-2 text-xs font-bold tracking-widest uppercase flex-1 border-gray-400 text-gray-500 hover:text-white hover:bg-gray-500 dark:border-gray-600 dark:text-gray-400">Batal</button>
+                    <button id="btn-confirm-delete" onclick="executeDeleteInfal()" class="btn-cyber px-6 py-2 text-xs font-bold tracking-widest uppercase flex-1 !bg-gradient-to-r !from-red-600 !to-pink-500 !text-white hover:!shadow-[0_0_15px_rgba(255,0,127,0.5)]">Ya, Hapus Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Custom Alert Modal -->
+
     
     <!-- Custom Alert Modal -->
     <div class="modal-overlay" id="custom-alert-modal">
@@ -2254,9 +2276,9 @@
 
         let currentInfalSortColumn = 'sesi_jp';
         let currentInfalSortAscending = true;
+        let pendingDeleteData = null; // Memori global untuk hapus data
 
         function sortInfalLog(column) {
-            // Ubah arah panah jika kolom yang diklik sama
             if (currentInfalSortColumn === column) {
                 currentInfalSortAscending = !currentInfalSortAscending;
             } else {
@@ -2264,17 +2286,15 @@
                 currentInfalSortAscending = true;
             }
             
-            // Animasi & Ganti Ikon Panah
             ['sesi_jp', 'id_kelas', 'guru_keluar', 'guru_pengganti'].forEach(col => {
                 const icon = document.getElementById(`sort-icon-${col}`);
                 if(icon) {
-                    icon.className = 'fas fa-sort ml-1 opacity-50 group-hover:opacity-100 transition'; // Reset ke default
+                    icon.className = 'fas fa-sort ml-1 opacity-50 group-hover:opacity-100 transition';
                     if (col === currentInfalSortColumn) {
                         icon.className = currentInfalSortAscending ? 'fas fa-sort-up ml-1 text-neoncyan opacity-100' : 'fas fa-sort-down ml-1 text-neoncyan opacity-100';
                     }
                 }
             });
-            
             loadInfalLog();
         }
 
@@ -2284,11 +2304,20 @@
             tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted italic"><i class="fas fa-spinner fa-spin"></i> Memuat log...</td></tr>`;
             
             try {
-                // Supabase diurutkan berdasarkan panah yang sedang aktif
-                const { data, error } = await supabaseClient.from('data_infal')
+                // Multiple Sorting (Bertingkat)
+                let query = supabaseClient.from('data_infal')
                     .select('*')
                     .eq('tanggal', date)
                     .order(currentInfalSortColumn, { ascending: currentInfalSortAscending });
+                
+                // Jika user sort nama, prioritas kedua otomatis JP. Dan sebaliknya.
+                if (currentInfalSortColumn !== 'sesi_jp') {
+                    query = query.order('sesi_jp', { ascending: true });
+                } else {
+                    query = query.order('guru_keluar', { ascending: true });
+                }
+
+                const { data, error } = await query;
                     
                 if(data && data.length > 0) {
                     tbody.innerHTML = data.map(i => `<tr class="hover:bg-blue-50 dark:hover:bg-neoncyan/5">
@@ -2298,7 +2327,7 @@
                         <td class="p-2 font-bold text-xs text-green-600 dark:text-neongreen">${i.guru_pengganti}</td>
                         <td class="p-2 italic text-[10px] text-muted">${i.alasan}</td>
                         <td class="p-2 flex justify-center items-center">
-                            <button onclick="deleteInfalLog('${i.tanggal}', '${i.sesi_jp}', '${i.id_kelas}', '${i.guru_keluar}')" class="text-neonpink hover:text-white hover:bg-neonpink w-6 h-6 rounded flex items-center justify-center transition" title="Hapus Data">
+                            <button onclick="promptDeleteInfalLog('${i.tanggal}', '${i.sesi_jp}', '${i.id_kelas}', '${i.guru_keluar}')" class="text-neonpink hover:text-white hover:bg-neonpink w-6 h-6 rounded flex items-center justify-center transition" title="Hapus Data">
                                 <i class="fas fa-trash-alt text-[10px]"></i>
                             </button>
                         </td>
@@ -2311,25 +2340,39 @@
             }
         }
 
-        async function deleteInfalLog(tanggal, sesi, kelas, guruKeluar) {
-            if(confirm('Yakin ingin menghapus data replacement ini?')) {
-                try {
-                    const { error } = await supabaseClient.from('data_infal')
-                        .delete()
-                        .eq('tanggal', tanggal)
-                        .eq('sesi_jp', sesi)
-                        .eq('id_kelas', kelas)
-                        .eq('guru_keluar', guruKeluar);
-                        
-                    if(!error) {
-                        showToast('Data berhasil dihapus', 'success');
-                        loadInfalLog(); 
-                        loadDashboard(true); // Sinkronisasi ulang dashboard
-                    } else {
-                        showToast('Gagal menghapus data', 'error');
-                    }
-                } catch(e) { console.error(e); }
-            }
+        // TRIGGER CUSTOM MODAL
+        function promptDeleteInfalLog(tanggal, sesi, kelas, guruKeluar) {
+            pendingDeleteData = { tanggal, sesi, kelas, guruKeluar };
+            document.getElementById('delete-confirm-text').innerHTML = `Hapus replacement <b>${guruKeluar}</b> di kelas <b>${kelas} (${sesi})</b>?`;
+            openModal('delete-confirm-modal');
+        }
+
+        // EKSEKUSI HAPUS ASLI SUPABASE
+        async function executeDeleteInfal() {
+            if(!pendingDeleteData) return;
+            const btn = document.getElementById('btn-confirm-delete');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...'; btn.disabled = true;
+
+            try {
+                const { error } = await supabaseClient.from('data_infal')
+                    .delete()
+                    .eq('tanggal', pendingDeleteData.tanggal)
+                    .eq('sesi_jp', pendingDeleteData.sesi)
+                    .eq('id_kelas', pendingDeleteData.kelas)
+                    .eq('guru_keluar', pendingDeleteData.guruKeluar);
+                    
+                if(!error) {
+                    showToast('Data berhasil dihapus', 'success');
+                    closeModal('delete-confirm-modal');
+                    loadInfalLog(); 
+                    loadDashboard(true); // Sinkronisasi ulang dashboard
+                } else {
+                    showToast('Gagal menghapus data', 'error');
+                }
+            } catch(e) { console.error(e); }
+
+            btn.innerHTML = 'Ya, Hapus Data'; btn.disabled = false;
+            pendingDeleteData = null; // Reset memori
         }
         
         async function loadJPRecap() {
@@ -3273,13 +3316,24 @@
             let end = document.getElementById('infal-print-end').value;
             
             try {
-                // PDF 100% ngikutin arah panah sorting yang lagi aktif di layar
-                const { data } = await supabaseClient.from('data_infal')
+                // Menyiapkan Chained Order (Multiple Sorting) agar PDF sinkron dengan tabel layar
+                let query = supabaseClient.from('data_infal')
                     .select('*')
                     .gte('tanggal', start)
                     .lte('tanggal', end)
-                    .order(currentInfalSortColumn, { ascending: currentInfalSortAscending })
-                    .order('tanggal', { ascending: true }); // Fallback urutan berdasarkan tgl
+                    .order(currentInfalSortColumn, { ascending: currentInfalSortAscending });
+                
+                // Prioritas kedua agar tidak berantakan
+                if (currentInfalSortColumn !== 'sesi_jp') {
+                    query = query.order('sesi_jp', { ascending: true });
+                } else {
+                    query = query.order('guru_keluar', { ascending: true });
+                }
+                
+                // Prioritas terakhir, selalu urut berdasarkan tanggal
+                query = query.order('tanggal', { ascending: true });
+
+                const { data } = await query;
                 
                 let tbodyHtml = '';
                 if(data && data.length > 0) {
