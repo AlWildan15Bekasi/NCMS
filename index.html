@@ -83,13 +83,32 @@
         .light .gradient-text { background: none; -webkit-text-fill-color: #0f172a; color: #0f172a; text-shadow: none !important; }
         
         .neon-glow-cyan { text-shadow: 0 0 10px rgba(0, 229, 255, 0.6); color: #00e5ff; }
-        .light .neon-glow-cyan { text-shadow: none !important; color: #0284c7 !important; font-weight: 700; }
+        .light .neon-glow-cyan { text-shadow: none !important; color: #0369a1 !important; font-weight: 700; }
         .neon-glow-green { text-shadow: 0 0 10px rgba(0, 250, 154, 0.6); color: #00fa9a; }
-        .light .neon-glow-green { text-shadow: none !important; color: #16a34a !important; font-weight: 700; }
+        .light .neon-glow-green { text-shadow: none !important; color: #15803d !important; font-weight: 700; }
         .neon-glow-pink { text-shadow: 0 0 10px rgba(255, 0, 127, 0.6); color: #ff007f; }
-        .light .neon-glow-pink { text-shadow: none !important; color: #be123c !important; font-weight: 700; }
+        .light .neon-glow-pink { text-shadow: none !important; color: #be185d !important; font-weight: 700; }
 
-        .btn-cyber { background: linear-gradient(135deg, #0077b6, #00e5ff); border: none; border-radius: 999px; color: #050a15; box-shadow: 0 0 15px rgba(0, 229, 255, 0.4); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        /* 🎨 GLOBAL OVERRIDES FOR LIGHT MODE (DARKER/CORPORATE CONTRAST) */
+        .light .text-neoncyan { color: #0369a1 !important; }
+        .light .text-neongreen { color: #15803d !important; }
+        .light .text-neonpink { color: #be185d !important; }
+        .light .text-neonyellow { color: #b45309 !important; }
+        
+        .light .bg-neoncyan\/20, .light .bg-neoncyan\/10 { background-color: #e0f2fe !important; }
+        .light .bg-neongreen\/20, .light .bg-neongreen\/10 { background-color: #dcfce7 !important; }
+        .light .bg-neonpink\/20, .light .bg-neonpink\/10 { background-color: #fce7f3 !important; }
+        .light .bg-neonyellow\/20, .light .bg-neonyellow\/10 { background-color: #fef3c7 !important; }
+        
+        .light .border-neoncyan\/50, .light .border-neoncyan\/30, .light .border-neoncyan { border-color: #7dd3fc !important; }
+        .light .border-neongreen\/50, .light .border-neongreen\/30, .light .border-neongreen { border-color: #86efac !important; }
+        .light .border-neonpink\/50, .light .border-neonpink\/30, .light .border-neonpink { border-color: #f9a8d4 !important; }
+        .light .border-neonyellow\/50, .light .border-neonyellow\/30, .light .border-neonyellow { border-color: #fcd34d !important; }
+        
+        /* Tambahan untuk panah hover di tabel saat Light Mode */
+        .light .hover\:text-neoncyan:hover { color: #0369a1 !important; }
+
+        .btn-cyber { background: linear-gradient(135deg, #0077b6, #00e5ff); border: none; border-radius: 999px; color: #050a15; box-shadow: 0 0 15px rgba(0, 229, 255, 0.4); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); } transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         .light .btn-cyber { background: linear-gradient(135deg, #0284c7, #38bdf8); color: white; box-shadow: 0 4px 14px 0 rgba(14, 165, 233, 0.39); text-shadow: none; }
         .btn-cyber:hover { transform: translateY(-2px) scale(1.02); }
         .dark .btn-cyber:hover { box-shadow: 0 0 25px rgba(0, 229, 255, 0.8); }
