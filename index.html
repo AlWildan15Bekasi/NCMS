@@ -1558,10 +1558,10 @@
             const endD = document.getElementById('dash-date-end').value;
             
             try {
-                // Fetch Data based on filter
-                const { data: cicoData } = await supabaseClient.from('log_cico').select('*').gte('tanggal', startD).lte('tanggal', endD);
-                const { data: absensiData } = await supabaseClient.from('absensi_gerbang').select('*').gte('tanggal', startD).lte('tanggal', endD);
-                const { data: infalData } = await supabaseClient.from('data_infal').select('*').gte('tanggal', startD).lte('tanggal', endD);
+                // Fetch Data based on filter (Bypass 1000 limit Supabase)
+                const { data: cicoData } = await supabaseClient.from('log_cico').select('*').gte('tanggal', startD).lte('tanggal', endD).limit(10000);
+                const { data: absensiData } = await supabaseClient.from('absensi_gerbang').select('*').gte('tanggal', startD).lte('tanggal', endD).limit(10000);
+                const { data: infalData } = await supabaseClient.from('data_infal').select('*').gte('tanggal', startD).lte('tanggal', endD).limit(10000);
                 
                 // Misi 3: KALKULASI REAL-TIME (No more dummy)
                 let totalKehadiran = absensiData ? absensiData.length : 0;
@@ -1690,7 +1690,7 @@
             const startD = document.getElementById('att-date-start').value; const endD = document.getElementById('att-date-end').value;
             
             try {
-                const { data, error } = await supabaseClient.from('absensi_gerbang').select('*').gte('tanggal', startD).lte('tanggal', endD).order('tanggal', { ascending: false });
+                const { data, error } = await supabaseClient.from('absensi_gerbang').select('*').gte('tanggal', startD).lte('tanggal', endD).order('tanggal', { ascending: false }).limit(10000);
                 
                 if (data && data.length > 0) {
                     tbody.innerHTML = data.map(d => {
@@ -1750,7 +1750,7 @@
             showToast('Mengambil data absen dari Supabase...', 'info');
 
             try {
-                const { data } = await supabaseClient.from('absensi_gerbang').select('nama_guru, waktu_scan').gte('tanggal', startD).lte('tanggal', endD);
+                const { data } = await supabaseClient.from('absensi_gerbang').select('nama_guru, waktu_scan').gte('tanggal', startD).lte('tanggal', endD).limit(10000);
                 if(data) {
                     globalEditedAttendance.forEach((guru, idx) => {
                         let myScans = data.filter(d => d.nama_guru === guru.nama);
@@ -1945,11 +1945,10 @@
                 // Tarik semua data yang dibutuhkan sekaligus untuk efisiensi
                 const [resLibur, resJadwal, resInfal, resCico] = await Promise.all([
                     supabaseClient.from('pengaturan_hari_libur').select('*').lte('tanggal_mulai', endD).gte('tanggal_selesai', startD),
-                    supabaseClient.from('master_jadwal').select('*'), // Tarik semua jadwal
-                    supabaseClient.from('data_infal').select('*').gte('tanggal', startD).lte('tanggal', endD),
-                    supabaseClient.from('log_cico').select('*').gte('tanggal', startD).lte('tanggal', endD)
+                    supabaseClient.from('master_jadwal').select('*').limit(10000), // Tarik semua jadwal bypass limit
+                    supabaseClient.from('data_infal').select('*').gte('tanggal', startD).lte('tanggal', endD).limit(10000),
+                    supabaseClient.from('log_cico').select('*').gte('tanggal', startD).lte('tanggal', endD).limit(10000)
                 ]);
-
                 const liburData = resLibur.data || [];
                 const jadwalData = resJadwal.data || [];
                 const infalData = resInfal.data || [];
