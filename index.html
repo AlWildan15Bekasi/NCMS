@@ -1816,8 +1816,11 @@
                             guru.izin = serverData.izin || 0;
                             guru.alpa = serverData.alpa || 0;
                             guru.totalPotongan = serverData.total_potongan || 0;
+                            // 🆕 SIMPAN RINCIAN JSON DARI SERVER KE MEMORI
+                            guru.detailTelat = serverData.detail_telat || [];
                         } else {
                             guru.hadir = 0; guru.sakit = 0; guru.izin = 0; guru.alpa = 0; guru.totalPotongan = 0;
+                            guru.detailTelat = []; // Kosongkan jika tidak ada
                         }
                     });
                     renderEditAttendanceTable();
@@ -3286,51 +3289,28 @@
             let startDate = document.getElementById('att-date-start').value;
             let endDate = document.getElementById('att-date-end').value;
             let printDate = new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'});
-            
-            // Tarik data absen riil untuk mencari detail keterlambatan (Limit 10000 agar tidak terpotong)
-            const { data: realScans } = await supabaseClient
-                .from('absensi_gerbang')
-                .select('*')
-                .gte('tanggal', startDate)
-                .lte('tanggal', endDate)
-                .order('tanggal', { ascending: true })
-                .limit(10000);
 
             globalEditedAttendance.forEach((guru) => {
                 let rincianHtml = `<tr><td colspan="4" class="p-4 text-center italic text-xs text-gray-500 border-l border-r border-b border-gray-300">Tidak ada rekam jejak keterlambatan.</td></tr>`;
                 let totalMnt = 0;
-                let totalPotongan = 0;
-
-                if (realScans && realScans.length > 0) {
-                    // Normalisasi ekstrem: Buang semua spasi dan tanda baca agar JS tidak rewel
-                    const bersihkanTeks = (str) => str ? str.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '';
-                    
-                    // Filter scan milik guru ini yang telat (di atas jam 07:00:00)
-                    let telatScans = realScans.filter(s => bersihkanTeks(s.nama_guru) === bersihkanTeks(guru.nama) && s.waktu_scan > "07:00:00");
-                    
-                    if (telatScans.length > 0) {
-                        rincianHtml = telatScans.map(s => {
-                            // Hitung selisih menit akurat
-                            let [h, m, sec] = s.waktu_scan.split(':').map(Number);
-                            let selisihMnt = ((h * 60) + m) - ((7 * 60) + 0);
-                            totalMnt += selisihMnt;
-                            
-                            // Ambil denda dari settingan roda gigi
-                            let dendaRp = hitungDendaJam(s.waktu_scan);
-                            totalPotongan += dendaRp;
-
-                            return `<tr class="border-b border-gray-300">
-                                <td class="p-3 text-xs border-l border-r border-gray-300 text-gray-700">Telat pd. tgl ${formatDate(s.tanggal)}</td>
-                                <td class="p-3 text-center border-r border-gray-300 font-mono text-sm font-bold text-gray-800">${s.waktu_scan.substring(0,5)}</td>
-                                <td class="p-3 text-center border-r border-gray-300 font-bold text-[#b91c1c]">${selisihMnt} Mnt</td>
-                                <td class="p-3 text-right border-r border-gray-300 font-mono font-bold text-[#b91c1c]">${formatRp(dendaRp)}</td>
-                            </tr>`;
-                        }).join('');
-                    }
-                }
                 
-                // Gunakan potongan dari modal Edit (globalEditedAttendance) sebagai patokan final denda
-                let finalDenda = guru.totalPotongan > 0 ? guru.totalPotongan : totalPotongan;
+                // 🆕 CUKUP BACA DARI MEMORI (Tidak Ada API Call)
+                let detailArray = guru.detailTelat || [];
+
+                if (detailArray.length > 0) {
+                    rincianHtml = detailArray.map(s => {
+                        totalMnt += s.menit_telat;
+                        return `<tr class="border-b border-gray-300">
+                            <td class="p-3 text-xs border-l border-r border-gray-300 text-gray-700">Telat pd. tgl ${formatDate(s.tanggal)}</td>
+                            <td class="p-3 text-center border-r border-gray-300 font-mono text-sm font-bold text-gray-800">${s.waktu_scan.substring(0,5)}</td>
+                            <td class="p-3 text-center border-r border-gray-300 font-bold text-[#b91c1c]">${s.menit_telat} Mnt</td>
+                            <td class="p-3 text-right border-r border-gray-300 font-mono font-bold text-[#b91c1c]">${formatRp(s.denda_rp)}</td>
+                        </tr>`;
+                    }).join('');
+                }
+
+                // Denda final tetap pakai data global karena bisa di-edit manual di layar
+                let finalDenda = guru.totalPotongan || 0;
 
                 fullHtml += `
                 <div class="a4-page-potrait bg-white p-[15mm] font-sans relative overflow-hidden">
