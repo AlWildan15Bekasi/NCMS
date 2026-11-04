@@ -3302,8 +3302,11 @@
                 let totalPotongan = 0;
 
                 if (realScans && realScans.length > 0) {
+                    // Normalisasi ekstrem: Buang semua spasi dan tanda baca agar JS tidak rewel
+                    const bersihkanTeks = (str) => str ? str.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '';
+                    
                     // Filter scan milik guru ini yang telat (di atas jam 07:00:00)
-                    let telatScans = realScans.filter(s => s.nama_guru === guru.nama && s.waktu_scan > "07:00:00");
+                    let telatScans = realScans.filter(s => bersihkanTeks(s.nama_guru) === bersihkanTeks(guru.nama) && s.waktu_scan > "07:00:00");
                     
                     if (telatScans.length > 0) {
                         rincianHtml = telatScans.map(s => {
