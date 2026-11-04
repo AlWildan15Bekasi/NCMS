@@ -495,6 +495,8 @@
                                 <button onclick="openDendaModal()" class="w-9 h-9 rounded-full bg-neoncyan/20 text-neoncyan dark:text-neoncyan text-blue-500 border border-neoncyan/50 flex items-center justify-center hover:bg-neoncyan hover:text-white transition ml-1" title="Pengaturan Denda Keterlambatan"><i class="fas fa-cog text-xs"></i></button>
                                 
                                 <input type="date" id="att-date-start" class="input-cyber h-9 text-xs w-32">
+                                <span class="text-neoncyan/50 text-xs"><i class="fas fa-minus"></i></span>
+                                <input type="date" id="att-date-end" class="input-cyber h-9 text-xs w-32">
                                 <div class="flex custom-bg-alt p-1 rounded-full border custom-border ml-1">
                                     <button onclick="loadAttendance()" class="w-8 h-8 rounded-full bg-neonblue dark:bg-neonblue bg-blue-500 text-white flex items-center justify-center hover:bg-neoncyan transition"><i class="fas fa-search text-xs"></i></button>
                                     <button onclick="clearAttFilter()" class="w-8 h-8 rounded-full text-muted flex items-center justify-center hover:text-neonpink transition"><i class="fas fa-times text-xs"></i></button>
@@ -1795,7 +1797,7 @@
 
             try {
                 let dendaParams = getDendaSettings();
-                // Nembak ke Supabase SQL langsung, biar server yang berhitung!
+                // Nembak ke Supabase SQL langsung
                 const { data, error } = await supabaseClient.rpc('get_rekap_absen_cerdas', {
                     p_start_date: startD,
                     p_end_date: endD,
@@ -1806,7 +1808,6 @@
                 if (error) throw error;
 
                 if(data) {
-                    // Masukkan hasil matang dari server ke dalam array tabel UI
                     globalEditedAttendance.forEach((guru) => {
                         let serverData = data.find(d => d.nama === guru.nama);
                         if (serverData) {
