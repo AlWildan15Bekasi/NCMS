@@ -490,10 +490,11 @@
                                 <div class="w-10 h-10 rounded-full bg-neongreen/20 flex items-center justify-center border border-neongreen/50"><i class="fas fa-fingerprint text-neongreen dark:text-neongreen text-green-600 text-lg"></i></div>
                                 <div><h2 class="text-lg font-bold text-lighttext dark:text-white tracking-widest uppercase">Biometric Data</h2><p class="text-[10px] text-muted tracking-wider font-bold">Gate Access Log Sync</p></div>
                             </div>
-                            <div class="flex flex-wrap items-center gap-2">
+                           <div class="flex flex-wrap items-center gap-2">
                                 <button onclick="openModal('edit-attendance-modal')" class="w-9 h-9 rounded-full bg-neonyellow/20 text-neonyellow dark:text-neonyellow text-orange-500 border border-neonyellow/50 flex items-center justify-center hover:bg-neonyellow hover:text-white transition" title="Edit Manual Rekap Kehadiran"><i class="fas fa-pen text-xs"></i></button>
+                                <button onclick="openDendaModal()" class="w-9 h-9 rounded-full bg-neoncyan/20 text-neoncyan dark:text-neoncyan text-blue-500 border border-neoncyan/50 flex items-center justify-center hover:bg-neoncyan hover:text-white transition ml-1" title="Pengaturan Denda Keterlambatan"><i class="fas fa-cog text-xs"></i></button>
                                 
-                                <input type="date" id="att-date-start" class="input-cyber h-9 text-xs w-32"><span class="text-neoncyan/50 text-xs"><i class="fas fa-minus"></i></span><input type="date" id="att-date-end" class="input-cyber h-9 text-xs w-32">
+                                <input type="date" id="att-date-start" class="input-cyber h-9 text-xs w-32">
                                 <div class="flex custom-bg-alt p-1 rounded-full border custom-border ml-1">
                                     <button onclick="loadAttendance()" class="w-8 h-8 rounded-full bg-neonblue dark:bg-neonblue bg-blue-500 text-white flex items-center justify-center hover:bg-neoncyan transition"><i class="fas fa-search text-xs"></i></button>
                                     <button onclick="clearAttFilter()" class="w-8 h-8 rounded-full text-muted flex items-center justify-center hover:text-neonpink transition"><i class="fas fa-times text-xs"></i></button>
@@ -685,7 +686,7 @@
                                 <div><label class="block text-[10px] text-neonpink dark:text-neonpink text-red-500 uppercase tracking-widest mb-2 pl-1 font-bold">Outbound (Izin)</label><select id="infal-keluar" class="input-cyber w-full border-neonpink/50 dark:text-gray-300 global-teacher-dropdown" onchange="handleOutboundChange()"><option value="">-- Select --</option></select></div>
                                 <div><label class="block text-[10px] text-muted uppercase tracking-widest mb-2 pl-1 font-bold">Session</label><select id="infal-jp" class="input-cyber w-full" disabled onchange="handleSessionChange()"><option value="">- Waiting -</option></select></div>
                                 <div><label class="block text-[10px] text-muted uppercase tracking-widest mb-2 pl-1 font-bold">Sector (Class)</label><input type="text" id="infal-kelas" class="input-cyber w-full bg-gray-100 dark:bg-darkbg text-muted cursor-not-allowed" readonly placeholder="- Auto Fill -"></div>
-                                <div><label class="block text-[10px] text-muted uppercase tracking-widest mb-2 pl-1 font-bold">Status Code</label><select id="infal-alasan" class="input-cyber w-full"><option value="Sakit">Sakit</option><option value="Izin">Izin</option><option value="Tugas Sekolah">Tugas Sekolah</option><option value="Absen">Absen</option></select></div>
+                                <div><label class="block text-[10px] text-muted uppercase tracking-widest mb-2 pl-1 font-bold">Status Code</label><select id="infal-alasan" class="input-cyber w-full"><option value="Sakit">Sakit</option><option value="Izin (P)">Izin (P) - Planned</option><option value="Izin (UP)">Izin (UP) - Unplanned</option><option value="Tugas Sekolah">Tugas Sekolah</option><option value="Absen">Absen</option></select></div>
                                 <div><label class="block text-[10px] text-neongreen dark:text-neongreen text-green-600 uppercase tracking-widest mb-2 pl-1 font-bold">Inbound (Masuk)</label><select id="infal-masuk" class="input-cyber w-full border-neongreen/50 dark:text-white dark:bg-neongreen/5 bg-green-50 global-teacher-dropdown font-bold" disabled><option value="">- Waiting -</option></select></div>
                             </div>
                             <div class="mt-8 flex justify-end border-t custom-border pt-5 relative z-10"><button onclick="saveInfal()" id="btn-save-infal" class="btn-cyber px-8 py-3 text-xs tracking-[0.2em] uppercase font-bold flex items-center gap-3"><i class="fas fa-upload"></i> TRANSMIT DATA</button></div>
@@ -1177,6 +1178,25 @@
                 <div class="flex gap-3 w-full justify-center">
                     <button onclick="closeModal('delete-confirm-modal')" class="btn-outline-cyber px-6 py-2 text-xs font-bold tracking-widest uppercase flex-1 border-gray-400 text-gray-500 hover:text-white hover:bg-gray-500 dark:border-gray-600 dark:text-gray-400">Batal</button>
                     <button id="btn-confirm-delete" onclick="executeDeleteInfal()" class="btn-cyber px-6 py-2 text-xs font-bold tracking-widest uppercase flex-1 !bg-gradient-to-r !from-red-600 !to-pink-500 !text-white hover:!shadow-[0_0_15px_rgba(255,0,127,0.5)]">Ya, Hapus Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PENGATURAN DENDA -->
+    <div class="modal-overlay" id="denda-modal">
+        <div class="modal-content relative max-w-lg">
+            <button onclick="closeModal('denda-modal')" class="absolute top-4 right-4 text-muted hover:text-neonpink transition text-xl"><i class="fas fa-times"></i></button>
+            <h2 class="text-lg font-bold text-lighttext dark:text-white uppercase tracking-widest mb-4 border-b custom-border pb-2"><i class="fas fa-money-bill-wave text-neoncyan mr-2"></i> Penyesuaian Transport Keterlambatan</h2>
+            <div class="space-y-3">
+                <div class="flex justify-between items-center"><label class="text-xs font-bold text-muted">07:01 - 07:05 (Rp)</label><input type="number" id="denda-1" class="input-cyber w-32 text-right"></div>
+                <div class="flex justify-between items-center"><label class="text-xs font-bold text-muted">07:06 - 07:15 (Rp)</label><input type="number" id="denda-2" class="input-cyber w-32 text-right"></div>
+                <div class="flex justify-between items-center"><label class="text-xs font-bold text-muted">07:16 - 08:30 (Rp)</label><input type="number" id="denda-3" class="input-cyber w-32 text-right"></div>
+                <div class="flex justify-between items-center"><label class="text-xs font-bold text-muted">08:31 - 09:30 (Rp)</label><input type="number" id="denda-4" class="input-cyber w-32 text-right"></div>
+                <div class="flex justify-between items-center"><label class="text-xs font-bold text-muted">09:31 - 12:00 (Rp)</label><input type="number" id="denda-5" class="input-cyber w-32 text-right"></div>
+                <div class="flex justify-between items-center"><label class="text-xs font-bold text-muted">12:01 - 15:00 (Rp)</label><input type="number" id="denda-6" class="input-cyber w-32 text-right"></div>
+                <div class="mt-6 flex justify-end">
+                    <button class="btn-cyber px-6 py-2 text-xs font-bold tracking-widest uppercase" onclick="saveDendaSettings()">Simpan Denda</button>
                 </div>
             </div>
         </div>
