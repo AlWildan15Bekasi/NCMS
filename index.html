@@ -1238,6 +1238,30 @@
 
        const formatRp = (num) => { if(!num) return 'Rp0'; return 'Rp' + Number(num).toLocaleString('id-ID'); };
 
+        // PENGATURAN DENDA LOKAL
+        function getDendaSettings() { return JSON.parse(localStorage.getItem('dendaSettings')) || [5000, 10000, 15000, 20000, 25000, 30000]; }
+        function openDendaModal() {
+            let d = getDendaSettings();
+            for(let i=1; i<=6; i++) document.getElementById(`denda-${i}`).value = d[i-1];
+            openModal('denda-modal');
+        }
+        function saveDendaSettings() {
+            let d = []; for(let i=1; i<=6; i++) d.push(parseInt(document.getElementById(`denda-${i}`).value) || 0);
+            localStorage.setItem('dendaSettings', JSON.stringify(d));
+            showToast('Tingkat denda berhasil disimpan!', 'success'); closeModal('denda-modal');
+        }
+        function hitungDendaJam(waktu) {
+            let d = getDendaSettings();
+            if(waktu >= "07:01:00" && waktu <= "07:05:59") return d[0];
+            if(waktu >= "07:06:00" && waktu <= "07:15:59") return d[1];
+            if(waktu >= "07:16:00" && waktu <= "08:30:59") return d[2];
+            if(waktu >= "08:31:00" && waktu <= "09:30:59") return d[3];
+            if(waktu >= "09:31:00" && waktu <= "12:00:59") return d[4];
+            if(waktu >= "12:01:00" && waktu <= "15:00:00") return d[5];
+            if(waktu > "15:00:00") return d[5];
+            return 0;
+        }
+
         // FUNGSI UNTUK HIDE/SHOW SIDEBAR
         function toggleSidebar() {
             const sidebar = document.getElementById('main-sidebar');
@@ -1762,32 +1786,47 @@
             tbody.innerHTML = html;
         }
 
-        // Misi 2: Auto Hitung Absen (Diperbarui tanpa tombol manual)
+        // Misi 2 & 6: Auto Hitung Absen via RPC Server Supabase
         async function calculateAutoAttendance() {
             const startD = document.getElementById('att-date-start').value; 
             const endD = document.getElementById('att-date-end').value;
             
-            showToast('Mengambil data absen dari Supabase...', 'info');
+            showToast('Mengambil data rekap matang dari Server...', 'info');
 
             try {
-                const { data } = await supabaseClient.from('absensi_gerbang').select('nama_guru, waktu_scan').gte('tanggal', startD).lte('tanggal', endD).limit(10000);
+                let dendaParams = getDendaSettings();
+                // Nembak ke Supabase SQL langsung, biar server yang berhitung!
+                const { data, error } = await supabaseClient.rpc('get_rekap_absen_cerdas', {
+                    p_start_date: startD,
+                    p_end_date: endD,
+                    p_d1: dendaParams[0], p_d2: dendaParams[1], p_d3: dendaParams[2],
+                    p_d4: dendaParams[3], p_d5: dendaParams[4], p_d6: dendaParams[5]
+                });
+
+                if (error) throw error;
+
                 if(data) {
-                    globalEditedAttendance.forEach((guru, idx) => {
-                        let myScans = data.filter(d => d.nama_guru === guru.nama);
-                        guru.hadir = myScans.length; 
-                        
-                        let lateCount = myScans.filter(s => s.waktu_scan > "07:00:00").length;
-                        guru.totalPotongan = lateCount * 5000;
+                    // Masukkan hasil matang dari server ke dalam array tabel UI
+                    globalEditedAttendance.forEach((guru) => {
+                        let serverData = data.find(d => d.nama === guru.nama);
+                        if (serverData) {
+                            guru.hadir = serverData.hadir || 0;
+                            guru.sakit = serverData.sakit || 0;
+                            guru.izin = serverData.izin || 0;
+                            guru.alpa = serverData.alpa || 0;
+                            guru.totalPotongan = serverData.total_potongan || 0;
+                        } else {
+                            guru.hadir = 0; guru.sakit = 0; guru.izin = 0; guru.alpa = 0; guru.totalPotongan = 0;
+                        }
                     });
                     renderEditAttendanceTable();
-                    showToast('Perhitungan Otomatis Berhasil!', 'success');
+                    showToast('Kalkulasi Otomatis (Server) Berhasil!', 'success');
                 }
             } catch (err) {
                 console.error(err);
-                showToast('Gagal menghitung otomatis', 'error');
+                showToast('Gagal menarik data dari server', 'error');
             }
         }
-
         function saveAttendanceEdit() {
             if(!globalEditedAttendance || globalEditedAttendance.length === 0) return;
             for(let i=0; i<globalEditedAttendance.length; i++) {
@@ -3247,13 +3286,14 @@
             let endDate = document.getElementById('att-date-end').value;
             let printDate = new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'});
             
-            // Tarik data absen riil untuk mencari detail keterlambatan
+            // Tarik data absen riil untuk mencari detail keterlambatan (Limit 10000 agar tidak terpotong)
             const { data: realScans } = await supabaseClient
                 .from('absensi_gerbang')
                 .select('*')
                 .gte('tanggal', startDate)
                 .lte('tanggal', endDate)
-                .order('tanggal', { ascending: true });
+                .order('tanggal', { ascending: true })
+                .limit(10000);
 
             globalEditedAttendance.forEach((guru) => {
                 let rincianHtml = `<tr><td colspan="4" class="p-4 text-center italic text-xs text-gray-500 border-l border-r border-b border-gray-300">Tidak ada rekam jejak keterlambatan.</td></tr>`;
@@ -3266,17 +3306,20 @@
                     
                     if (telatScans.length > 0) {
                         rincianHtml = telatScans.map(s => {
-                            // Hitung selisih menit kasar (Asumsi telat di bawah 1 jam)
+                            // Hitung selisih menit akurat
                             let [h, m, sec] = s.waktu_scan.split(':').map(Number);
-                            let selisihMnt = m; // Ambil menitnya saja sebagai contoh
+                            let selisihMnt = ((h * 60) + m) - ((7 * 60) + 0);
                             totalMnt += selisihMnt;
-                            totalPotongan += 5000;
+                            
+                            // Ambil denda dari settingan roda gigi
+                            let dendaRp = hitungDendaJam(s.waktu_scan);
+                            totalPotongan += dendaRp;
 
                             return `<tr class="border-b border-gray-300">
                                 <td class="p-3 text-xs border-l border-r border-gray-300 text-gray-700">Telat pd. tgl ${formatDate(s.tanggal)}</td>
                                 <td class="p-3 text-center border-r border-gray-300 font-mono text-sm font-bold text-gray-800">${s.waktu_scan.substring(0,5)}</td>
                                 <td class="p-3 text-center border-r border-gray-300 font-bold text-[#b91c1c]">${selisihMnt} Mnt</td>
-                                <td class="p-3 text-right border-r border-gray-300 font-mono font-bold text-[#b91c1c]">${formatRp(5000)}</td>
+                                <td class="p-3 text-right border-r border-gray-300 font-mono font-bold text-[#b91c1c]">${formatRp(dendaRp)}</td>
                             </tr>`;
                         }).join('');
                     }
