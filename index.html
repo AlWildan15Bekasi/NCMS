@@ -1652,11 +1652,16 @@
                 document.getElementById('pct-infal').innerText = Math.round((totalInfal / (totalInfal + normalSesi || 1)) * 100) + '%';
                 myChart3 = renderDonutChart('chartInfal', myChart3, ['Normal', 'Replaced'], [normalSesi, totalInfal], ['#0077b6', '#ffaa00']);
                 
-                // 5. Chart Anomali
-                let noScanPct = totalCico > 0 ? Math.round(((totalInfal + totalTelatKelas) / totalCico) * 15) : 0; 
+               // 5. Chart Anomali (REAL DATA)
+                let targetSesi = res.total_target_sesi || 1; // Hindari pembagian 0
+                let anomaliRiil = res.total_anomali || 0;
+                
+                let noScanPct = Math.round((anomaliRiil / targetSesi) * 100);
+                if(noScanPct > 100) noScanPct = 100;
+                
                 document.getElementById('pct-noscan').innerText = noScanPct + '%';
                 if(window.myChartNoScan) window.myChartNoScan.destroy();
-                window.myChartNoScan = renderDonutChart('chartNoScan', window.myChartNoScan, ['No Scan', 'Scanned'], [noScanPct, 100 - noScanPct], ['#ff007f', '#1e293b']);
+                window.myChartNoScan = renderDonutChart('chartNoScan', window.myChartNoScan, ['No Scan', 'Scanned'], [anomaliRiil, targetSesi - anomaliRiil], ['#ff007f', '#1e293b']);
                 
                 // 6. Live Infal Feed (Dari JSON Server)
                 let liveInfalData = res.live_infal_json || [];
