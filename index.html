@@ -1596,30 +1596,34 @@
             if(!error) loadHomeData(true); 
         }
 
-       async function loadDashboard(silent = false) { 
+      async function loadDashboard(silent = false) { 
             const dashCards = document.getElementById('dashboard-cards');
-            if(!silent) dashCards.innerHTML = `<div class="cyber-panel p-4 col-span-full flex items-center justify-center h-24 text-blue-600 dark:text-neoncyan"><i class="fas fa-circle-notch fa-spin text-2xl mr-3"></i> <span class="tracking-widest text-sm font-bold">AGGREGATING REAL DATA...</span></div>`;
+            if(!silent) dashCards.innerHTML = `<div class="cyber-panel p-4 col-span-full flex items-center justify-center h-24 text-blue-600 dark:text-neoncyan"><i class="fas fa-circle-notch fa-spin text-2xl mr-3"></i> <span class="tracking-widest text-sm font-bold">AGGREGATING REAL DATA FROM SERVER...</span></div>`;
             
             const startD = document.getElementById('dash-date-start').value; 
             const endD = document.getElementById('dash-date-end').value;
             
             try {
-                // Fetch Data based on filter (Bypass 1000 limit Supabase)
-                const { data: cicoData } = await supabaseClient.from('log_cico').select('*').gte('tanggal', startD).lte('tanggal', endD).limit(10000);
-                const { data: absensiData } = await supabaseClient.from('absensi_gerbang').select('*').gte('tanggal', startD).lte('tanggal', endD).limit(10000);
-                const { data: infalData } = await supabaseClient.from('data_infal').select('*').gte('tanggal', startD).lte('tanggal', endD).limit(10000);
+                // 🆕 OPSI B PART 2: Panggil Koki ke-2 di Supabase!
+                const { data, error } = await supabaseClient.rpc('get_dashboard_summary', {
+                    p_start_date: startD,
+                    p_end_date: endD
+                });
+
+                if (error) throw error;
+                if (!data || data.length === 0) throw new Error("No data returned");
+
+                let res = data[0]; // Ambil 1 baris hasil rekapan server yang sangat padat ini
+
+                // 1. Ekstrak Angka Utama
+                let totalKehadiran = res.total_scans;
+                let totalGateDelay = res.total_gate_delay;
+                let totalCico = res.total_cico;
+                let totalTelatKelas = res.total_telat_kelas;
+                let totalInfal = res.total_infal;
+                let totalIzin = 0; // Masih Dummy karena belum ada tabel HR Izin spesifik
                 
-                // Misi 3: KALKULASI REAL-TIME (No more dummy)
-                let totalKehadiran = absensiData ? absensiData.length : 0;
-                let totalCico = cicoData ? cicoData.length : 0;
-                let totalInfal = infalData ? infalData.length : 0;
-                
-                // Hitung Delay Gerbang (masuk lebih dari jam 07:00)
-                let totalGateDelay = absensiData ? absensiData.filter(a => a.waktu_scan > "07:00:00").length : 0;
-                // Hitung Telat Kelas (waktu in lebih dari jam target - simplifikasi)
-                let totalTelatKelas = cicoData ? cicoData.filter(c => c.waktu_in && c.waktu_in > "07:30:00").length : 0;
-                let totalIzin = 0; // Masih dummy karena belum ada tabel HR Izin spesifik
-                
+                // Render Top Panel
                 dashCards.innerHTML = `
                     <div class="cyber-panel p-4 border-l-4 border-l-green-500 dark:border-l-neongreen flex flex-col justify-between"><div class="text-[9px] text-muted tracking-[0.2em] uppercase mb-2 font-bold">Total Scans</div><div class="text-3xl font-mono font-bold text-lighttext dark:text-white neon-glow-green">${totalKehadiran}</div></div>
                     <div class="cyber-panel p-4 border-l-4 border-l-pink-500 dark:border-l-neonpink flex flex-col justify-between"><div class="text-[9px] text-muted tracking-[0.2em] uppercase mb-2 font-bold">Absences (Out)</div><div class="text-3xl font-mono font-bold text-lighttext dark:text-white drop-shadow-md dark:drop-shadow-[0_0_8px_rgba(255,0,127,0.8)]">${totalIzin}</div></div>
@@ -1627,100 +1631,50 @@
                     <div class="cyber-panel p-4 border-l-4 border-l-orange-500 flex flex-col justify-between"><div class="text-[9px] text-muted tracking-[0.2em] uppercase mb-2 font-bold">Class Alert</div><div class="text-3xl font-mono font-bold text-lighttext dark:text-white drop-shadow-md dark:drop-shadow-[0_0_8px_rgba(249,115,22,0.8)]">${totalTelatKelas}</div></div>
                     <div class="cyber-panel p-4 border-l-4 border-l-blue-500 dark:border-l-neonblue flex flex-col justify-between bg-blue-50 dark:bg-gradient-to-br dark:from-neonblue/10 dark:to-transparent transition-colors"><div class="text-[9px] text-blue-600 dark:text-neoncyan tracking-[0.2em] uppercase mb-2 font-bold">Active Protocol</div><div class="text-3xl font-mono font-bold text-lighttext dark:text-white neon-glow-cyan">${totalInfal} <span class="text-sm font-sans text-blue-600 dark:text-neoncyan">SES</span></div></div>`;
                 
-                // =====================================================================
-                // =====================================================================
-                // 🛠️ DIFF 6.1: KALKULASI CERDAS KEHADIRAN (PLUS RESTORE CHART 2 & 3)
-                // =====================================================================
-                // --- CHART 1: KEHADIRAN HARIAN (SMART LOGIC) ---
-                const { data: dataLibur } = await supabaseClient.from('pengaturan_hari_libur').select('*').lte('tanggal_mulai', endD).gte('tanggal_selesai', startD);
-                const liburArr = dataLibur || [];
-
-                let validDays = 0;
-                let currDay = new Date(startD);
-                let lastDay = new Date(endD);
-                let dayDiff = 0; // Disiapkan untuk hitungan chart 3 nanti
-                
-                while(currDay <= lastDay) {
-                    let y = currDay.getFullYear();
-                    let m = String(currDay.getMonth() + 1).padStart(2, '0');
-                    let d = String(currDay.getDate()).padStart(2, '0');
-                    let dateStr = `${y}-${m}-${d}`;
-
-                    let dayOfWeek = currDay.getDay();
-                    let isWeekend = (dayOfWeek === 0 || dayOfWeek === 6); // 0 = Minggu, 6 = Sabtu
-                    let isLiburNasional = liburArr.some(l => dateStr >= l.tanggal_mulai && dateStr <= l.tanggal_selesai);
-                    
-                    if(!isWeekend && !isLiburNasional) validDays++;
-                    dayDiff++;
-                    currDay.setDate(currDay.getDate() + 1);
-                }
-
-                let kehadiranUnik = new Set();
-                if (absensiData && absensiData.length > 0) {
-                    absensiData.forEach(scan => { kehadiranUnik.add(`${scan.nama_guru}_${scan.tanggal}`); });
-                }
-                
-                let totalKehadiranRiil = kehadiranUnik.size;
-                let maxTargetHadir = globalTeacherList.length * validDays;
+                // 2. Kalkulasi Chart Kehadiran Harian
+                let maxTargetHadir = res.total_guru * res.valid_days;
                 if(maxTargetHadir === 0) maxTargetHadir = 1; 
                 
-                let tidakHadirCount = Math.max(0, maxTargetHadir - totalKehadiranRiil);
-                let chartPercentage = Math.round((totalKehadiranRiil / maxTargetHadir) * 100);
+                let tidakHadirCount = Math.max(0, maxTargetHadir - res.total_hadir_riil);
+                let chartPercentage = Math.round((res.total_hadir_riil / maxTargetHadir) * 100);
                 if (chartPercentage > 100) chartPercentage = 100;
                 
                 document.getElementById('pct-hadir').innerText = chartPercentage + '%';
-                myChart1 = renderDonutChart('chartKehadiran', myChart1, ['Present', 'Absent'], [totalKehadiranRiil, tidakHadirCount], ['#00fa9a', '#1e293b']);
+                myChart1 = renderDonutChart('chartKehadiran', myChart1, ['Present', 'Absent'], [res.total_hadir_riil, tidakHadirCount], ['#00fa9a', '#1e293b']);
                 
-                // --- CHART 2: KEDISIPLINAN KELAS (RESTORED) ---
+                // 3. Chart Kedisiplinan Kelas
                 let disiplinKelas = Math.max(0, totalCico - totalTelatKelas);
                 document.getElementById('pct-kelas').innerText = totalCico > 0 ? Math.round((disiplinKelas / totalCico) * 100) + '%' : '0%';
                 myChart2 = renderDonutChart('chartKelas', myChart2, ['On Time', 'Warning'], [disiplinKelas, totalTelatKelas], ['#00e5ff', '#ffaa00']);
                 
-                // --- CHART 3: RASIO INFAL (RESTORED) ---
-                // Asumsi 1 bulan rata2 ada 200 sesi ajar (disesuaikan dengan selisih hari)
-                let normalSesi = Math.max(0, (200 * Math.max(1, dayDiff)) - totalInfal); 
+                // 4. Chart Rasio Infal
+                let normalSesi = Math.max(0, (200 * Math.max(1, res.total_days)) - totalInfal); 
                 document.getElementById('pct-infal').innerText = Math.round((totalInfal / (totalInfal + normalSesi || 1)) * 100) + '%';
                 myChart3 = renderDonutChart('chartInfal', myChart3, ['Normal', 'Replaced'], [normalSesi, totalInfal], ['#0077b6', '#ffaa00']);
-                // =====================================================================
                 
-                // Misi 3: Anomali Real (Ada di jadwal, tapi tidak scan) -> Dihitung di Misi SQL, jadi sementara persentase kasar dari Telat+Infal
+                // 5. Chart Anomali
                 let noScanPct = totalCico > 0 ? Math.round(((totalInfal + totalTelatKelas) / totalCico) * 15) : 0; 
                 document.getElementById('pct-noscan').innerText = noScanPct + '%';
                 if(window.myChartNoScan) window.myChartNoScan.destroy();
                 window.myChartNoScan = renderDonutChart('chartNoScan', window.myChartNoScan, ['No Scan', 'Scanned'], [noScanPct, 100 - noScanPct], ['#ff007f', '#1e293b']);
                 
-                // Misi 3: LIVE INFAL FEED (Tanpa Limit Slice!)
-               if(infalData && infalData.length > 0) {
-                    document.getElementById('dash-log-recent').innerHTML = infalData.map(i => `<div class="border-b custom-border pb-2 mb-2"><p class="text-[10px] text-muted">${formatDate(i.tanggal)} | ${i.sesi_jp}</p><p class="text-xs font-bold text-lighttext dark:text-white">${i.id_kelas}</p><p class="text-[10px]"><span class="text-neonpink">${i.guru_keluar}</span> <i class="fas fa-arrow-right text-muted text-[8px] mx-1"></i> <span class="text-neongreen">${i.guru_pengganti}</span></p></div>`).join('');
+                // 6. Live Infal Feed (Dari JSON Server)
+                let liveInfalData = res.live_infal_json || [];
+                if(liveInfalData.length > 0) {
+                    document.getElementById('dash-log-recent').innerHTML = liveInfalData.map(i => `<div class="border-b custom-border pb-2 mb-2"><p class="text-[10px] text-muted">${formatDate(i.tanggal)} | ${i.sesi_jp}</p><p class="text-xs font-bold text-lighttext dark:text-white">${i.id_kelas}</p><p class="text-[10px]"><span class="text-neonpink">${i.guru_keluar}</span> <i class="fas fa-arrow-right text-muted text-[8px] mx-1"></i> <span class="text-neongreen">${i.guru_pengganti}</span></p></div>`).join('');
                 } else {
                     document.getElementById('dash-log-recent').innerHTML = '<div class="h-full flex items-center justify-center text-muted italic text-xs">No records found</div>';
                 }
                 
-                // Misi: Kalkulasi 5 besar pahlawan infal langsung dari infalData (Real-time by Date Filter)
-                try {
-                    if(infalData && infalData.length > 0) {
-                        const infalCounts = {};
-                        infalData.forEach(item => {
-                            if(item.guru_pengganti) {
-                                infalCounts[item.guru_pengganti] = (infalCounts[item.guru_pengganti] || 0) + 1;
-                            }
-                        });
-                        
-                        // Ubah object ke array, urutkan descending terbanyak, lalu ambil 5 teratas
-                        const top5 = Object.keys(infalCounts)
-                            .map(k => ({ guru_pengganti: k, total_menggantikan: infalCounts[k] }))
-                            .sort((a, b) => b.total_menggantikan - a.total_menggantikan)
-                            .slice(0, 5);
-                            
-                        document.getElementById('dash-top-infal').innerHTML = top5.map(d => `<div class="flex justify-between items-center text-xs border-b border-gray-100 dark:border-gray-800 pb-2 mb-2"><span class="text-lighttext dark:text-gray-300 font-bold"><i class="fas fa-medal text-neonyellow mr-2"></i>${d.guru_pengganti}</span><span class="font-bold text-orange-600 dark:text-neonyellow bg-orange-100 dark:bg-neonyellow/20 px-2 py-0.5 rounded">${d.total_menggantikan}x Sesi</span></div>`).join('');
-                    } else {
-                        document.getElementById('dash-top-infal').innerHTML = '<div class="h-full flex items-center justify-center text-muted italic text-xs">Belum ada data infal di periode ini.</div>';
-                    }
-                } catch(e) { 
-                    document.getElementById('dash-top-infal').innerHTML = '<div class="h-full flex items-center justify-center text-red-500 italic text-xs">Error kalkulasi data.</div>'; 
+                // 7. Top 5 Pahlawan Infal (Dari JSON Server)
+                let top5Data = res.top_infal_json || [];
+                if(top5Data.length > 0) {
+                    document.getElementById('dash-top-infal').innerHTML = top5Data.map(d => `<div class="flex justify-between items-center text-xs border-b border-gray-100 dark:border-gray-800 pb-2 mb-2"><span class="text-lighttext dark:text-gray-300 font-bold"><i class="fas fa-medal text-neonyellow mr-2"></i>${d.guru_pengganti}</span><span class="font-bold text-orange-600 dark:text-neonyellow bg-orange-100 dark:bg-neonyellow/20 px-2 py-0.5 rounded">${d.total_menggantikan}x Sesi</span></div>`).join('');
+                } else {
+                    document.getElementById('dash-top-infal').innerHTML = '<div class="h-full flex items-center justify-center text-muted italic text-xs">Belum ada data infal di periode ini.</div>';
                 }
                 
-                if(!silent) showToast('Analytics Refreshed', 'success');
+                if(!silent) showToast('Analytics Server-Side Refreshed', 'success');
             } catch (err) {
                 console.error(err);
                 dashCards.innerHTML = `<div class="cyber-panel p-4 col-span-full flex items-center justify-center h-24 text-red-500"><i class="fas fa-exclamation-triangle text-2xl mr-3"></i> <span class="tracking-widest text-sm font-bold">DATABASE ERROR</span></div>`;
