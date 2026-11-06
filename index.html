@@ -2311,14 +2311,50 @@
             if(jadwalCocok) { kelasEl.value = jadwalCocok.kelas; }
 
             masukEl.innerHTML = '<option value="">Scanning Standby...</option>'; masukEl.disabled = true;
-            let hariIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][new Date(document.getElementById('infal-tgl').value).getDay()];
+            
+            let tgl = document.getElementById('infal-tgl').value;
+            let hariIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][new Date(tgl).getDay()];
             
             try {
-                // Get busy teachers for this session
-                const { data: busyData } = await supabaseClient.from('master_jadwal').select('guru').eq('hari', hariIndo).eq('sesi_jp', selectedJp);
-                const busyTeachers = busyData ? busyData.map(d => d.guru) : [];
+                // 1. Tarik jadwal semua guru di hari & jam itu
+                const { data: busyData } = await supabaseClient.from('master_jadwal').select('guru, kelas').eq('hari', hariIndo).eq('sesi_jp', selectedJp);
+                
+                // 2. Tarik daftar Pengecualian (Libur/Try Out) di tanggal itu
+                const { data: liburData } = await supabaseClient.from('pengaturan_hari_libur')
+                    .select('kelas_pengecualian')
+                    .lte('tanggal_mulai', tgl)
+                    .gte('tanggal_selesai', tgl);
+
+                let exceptionClasses = [];
+                let isGlobalHoliday = false;
+                
+                if(liburData && liburData.length > 0) {
+                    liburData.forEach(l => {
+                        // Kalau array kosong, berarti libur nasional
+                        if(!l.kelas_pengecualian || l.kelas_pengecualian.length === 0) {
+                            isGlobalHoliday = true; 
+                        } else {
+                            // Masukkan kelas-kelas yg libur ke keranjang pengecualian
+                            exceptionClasses.push(...l.kelas_pengecualian);
+                        }
+                    });
+                }
+
+                let busyTeachers = [];
+                
+                // 3. Seleksi Guru Sibuk yg REAL (Buang yg kelasnya lagi ujian)
+                if(!isGlobalHoliday && busyData) {
+                    busyData.forEach(d => {
+                        // Jika kelas si guru TIDAK ADA di keranjang pengecualian, barulah dia dianggap sibuk
+                        if(!exceptionClasses.includes(d.kelas)) {
+                            busyTeachers.push(d.guru);
+                        }
+                    });
+                }
                 
                 let guruKeluar = document.getElementById('infal-keluar').value;
+                
+                // 4. Standby = Semua Guru dikurangi Guru Sibuk yg Riil
                 const standby = globalTeacherList.filter(t => !busyTeachers.includes(t) && t !== guruKeluar);
                 
                 if(standby.length > 0) {
