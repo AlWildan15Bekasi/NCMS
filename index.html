@@ -523,6 +523,7 @@
                     <div class="flex gap-4 mb-4 border-b custom-border pb-2 overflow-x-auto" id="subnav-cico">
                         <button onclick="switchSubTab('cico', 'scan')" id="btn-sub-cico-scan" class="text-neoncyan dark:text-neoncyan text-blue-600 font-bold tracking-widest text-xs uppercase border-b-2 border-neoncyan dark:border-neoncyan border-blue-600 pb-2 whitespace-nowrap transition sub-tab-btn">Scan Log</button>
                         <button onclick="switchSubTab('cico', 'missing')" id="btn-sub-cico-missing" class="text-muted hover:text-lighttext dark:hover:text-white font-bold tracking-widest text-xs uppercase border-b-2 border-transparent pb-2 whitespace-nowrap transition sub-tab-btn">Missing / Unscanned</button>
+                        <button onclick="switchSubTab('cico', 'exception'); loadExceptionLog();" id="btn-sub-cico-exception" class="text-muted hover:text-lighttext dark:hover:text-white font-bold tracking-widest text-xs uppercase border-b-2 border-transparent pb-2 whitespace-nowrap transition sub-tab-btn">Exception Log</button>
                         
                         <!-- NEW SETTINGS BUTTON -->
                         <button onclick="openCicoOffModal()" class="ml-auto text-neonyellow hover:text-orange-400 font-bold tracking-widest text-xs uppercase pb-2 whitespace-nowrap transition flex items-center gap-2"><i class="fas fa-cog"></i> SETTINGS (LIBUR)</button>
@@ -630,6 +631,39 @@
                     </div>
                 </div>
 
+                <!-- 🆕 SUB-TAB EXCEPTION LOG (KANVAS TABEL RIWAYAT) -->
+                    <div id="sub-cico-exception" class="hidden space-y-6">
+                        <div class="cyber-panel border-l-4 border-l-neonyellow p-0 flex flex-col mt-4">
+                            <div class="p-4 border-b custom-border bg-white/5 dark:bg-black/20 flex justify-between items-center gap-4">
+                                <div>
+                                    <h3 class="text-sm font-bold text-orange-600 dark:text-neonyellow uppercase tracking-widest"><i class="fas fa-list-alt mr-2"></i> Riwayat Pengecualian & Libur</h3>
+                                    <p class="text-[10px] text-muted italic mt-1">Daftar hari libur atau pengecualian kelas yang tercatat di sistem.</p>
+                                </div>
+                                <div>
+                                    <!-- Tombol untuk narik data ulang (Refresh) -->
+                                    <button onclick="loadExceptionLog()" class="btn-outline-cyber h-9 px-4 text-xs font-bold text-orange-500 border-neonyellow/50 hover:bg-neonyellow hover:text-white transition" title="Refresh Data"><i class="fas fa-sync-alt"></i></button>
+                                </div>
+                            </div>
+                            <div class="overflow-y-auto max-h-[400px] custom-scrollbar bg-white dark:bg-transparent">
+                                <table class="w-full text-left text-sm border-collapse">
+                                    <thead class="bg-orange-50 dark:bg-[#0b1426] text-muted text-[10px] tracking-widest uppercase sticky top-0 z-10 shadow-sm">
+                                        <tr>
+                                            <th class="p-4 border-b custom-border w-1/4">Tanggal Berlaku</th>
+                                            <th class="p-4 border-b custom-border">Keterangan</th>
+                                            <th class="p-4 border-b custom-border text-center">Target Kelas</th>
+                                            <th class="p-4 border-b custom-border text-center w-24">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <!-- Di sinilah nanti JavaScript akan "menyuntikkan" data dari Supabase -->
+                                    <tbody id="table-exception-log-body" class="divide-y custom-border text-lighttext dark:text-gray-300">
+                                        <tr><td colspan="4" class="text-center py-10 italic text-muted">Awaiting API Sync...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                
                 <div id="tab-replacement" class="tab-content">
                     <div class="flex gap-4 mb-4 border-b custom-border pb-2 overflow-x-auto" id="subnav-infal">
                         <button onclick="switchSubTab('infal', 'exec')" id="btn-sub-infal-exec" class="text-neoncyan dark:text-neoncyan text-blue-600 font-bold tracking-widest text-xs uppercase border-b-2 border-neoncyan dark:border-neoncyan border-blue-600 pb-2 whitespace-nowrap transition sub-tab-btn">Replacement Module</button>
@@ -3522,6 +3556,85 @@
                 console.error(err);
             }
         }
+
+        // ==========================================
+        // 🆕 FUNGSI MENARIK DATA RIWAYAT PENGECUALIAN
+        // ==========================================
+        async function loadExceptionLog() {
+            const tbody = document.getElementById('table-exception-log-body');
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center py-10 italic text-muted"><i class="fas fa-circle-notch fa-spin"></i> Menarik data riwayat...</td></tr>`;
+            
+            try {
+                // Tarik semua data dari Supabase, urutkan dari yang terbaru
+                const { data, error } = await supabaseClient
+                    .from('pengaturan_hari_libur')
+                    .select('*')
+                    .order('tanggal_mulai', { ascending: false });
+
+                if (error) throw error;
+
+                if (data && data.length > 0) {
+                    tbody.innerHTML = data.map(d => {
+                        // LOGIKA CERDAS BADGE: Cek apakah array kelasnya kosong atau ada isinya
+                        let isNasional = !d.kelas_pengecualian || d.kelas_pengecualian.length === 0;
+                        
+                        let targetBadge = isNasional 
+                            ? `<span class="text-[9px] bg-red-100 dark:bg-neonpink/20 text-red-600 dark:text-neonpink border border-red-200 dark:border-neonpink/50 px-2 py-0.5 rounded font-bold uppercase">LIBUR NASIONAL (Semua)</span>`
+                            : `<span class="text-[9px] bg-blue-100 dark:bg-neoncyan/20 text-blue-600 dark:text-neoncyan border border-blue-200 dark:border-neoncyan/50 px-2 py-0.5 rounded font-bold uppercase">PARSIAL (${d.kelas_pengecualian.length} Kelas)</span><br><span class="text-[10px] text-muted italic mt-1 inline-block">${d.kelas_pengecualian.join(', ')}</span>`;
+
+                        // Rapikan format tampilan tanggal
+                        let dateRange = d.tanggal_mulai === d.tanggal_selesai 
+                            ? formatDate(d.tanggal_mulai) 
+                            : `${formatDate(d.tanggal_mulai)} - ${formatDate(d.tanggal_selesai)}`;
+
+                        return `
+                        <tr class="hover:bg-orange-50 dark:hover:bg-neonyellow/5 transition-colors">
+                            <td class="p-4 text-xs font-mono font-bold">${dateRange}</td>
+                            <td class="p-4 text-xs font-bold text-lighttext dark:text-white">${d.keterangan}</td>
+                            <td class="p-4 text-center">${targetBadge}</td>
+                            <td class="p-4 text-center">
+                                <button onclick="deleteException('${d.tanggal_mulai}', '${d.keterangan}')" class="text-neonpink hover:text-white hover:bg-neonpink w-7 h-7 rounded flex items-center justify-center transition mx-auto" title="Hapus Pengecualian">
+                                    <i class="fas fa-trash-alt text-[10px]"></i>
+                                </button>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center py-10 italic text-green-500 font-bold"><i class="fas fa-check-circle"></i> Belum ada pengaturan libur atau pengecualian kelas.</td></tr>`;
+                }
+            } catch (err) {
+                console.error(err);
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-10 italic text-red-500">Gagal menarik riwayat pengecualian.</td></tr>`;
+            }
+        }
+
+        // ==========================================
+        // 🆕 FUNGSI HAPUS PENGECUALIAN / LIBUR
+        // ==========================================
+        async function deleteException(tgl, ket) {
+            // Pasang gembok konfirmasi supaya tidak terhapus karena salah klik
+            if(!confirm(`Yakin ingin menghapus pengecualian "${ket}"?\n\nPerhatian: Guru di kelas terkait akan kembali ditagih absensi CICO-nya.`)) return;
+            
+            try {
+                // Tembak perintah Hapus ke Supabase berdasarkan Tanggal dan Keterangan
+                const { error } = await supabaseClient
+                    .from('pengaturan_hari_libur')
+                    .delete()
+                    .eq('tanggal_mulai', tgl)
+                    .eq('keterangan', ket);
+                
+                if(!error) {
+                    showToast('Pengecualian berhasil dicabut!', 'success');
+                    // Panggil ulang fungsi load untuk merender ulang tabel (efek refresh instan)
+                    loadExceptionLog(); 
+                } else {
+                    showToast('Gagal menghapus pengecualian', 'error');
+                }
+            } catch(e) {
+                console.error(e);
+            }
+        }
+        
     </script>
 </body>
 </html>
