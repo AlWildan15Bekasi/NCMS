@@ -3685,7 +3685,6 @@
             tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-muted italic"><i class="fas fa-spinner fa-spin"></i> Menghitung Rekapitulasi...</td></tr>`;
             showToast('Menganalisis data mingguan & mutasi...', 'info');
 
-            // Hitung hari pertama dan terakhir di bulan tersebut
             const year = monthVal.split('-')[0];
             const month = monthVal.split('-')[1];
             const startD = `${year}-${month}-01`;
@@ -3693,79 +3692,70 @@
             const endD = `${year}-${month}-${lastDay}`;
 
             try {
-                // Tarik 2 data sekaligus: Semua Infal sebulan & Semua Jadwal
-                const [resInfal, resJadwal] = await Promise.all([
-                    supabaseClient.from('data_infal').select('guru_keluar, guru_pengganti').gte('tanggal', startD).lte('tanggal', endD),
-                    supabaseClient.from('master_jadwal').select('guru, hari, sesi_jp') // 🆕 Tarik hari & sesi_jp
+                // 🆕 Tarik data lewat RPC (Load) dan tabel biasa (Infal)
+                const [resLoad, resInfal] = await Promise.all([
+                    supabaseClient.rpc('get_teacher_load'), // Bebas limit 1000 baris, anti kelas dobel
+                    supabaseClient.from('data_infal').select('guru_keluar, guru_pengganti').gte('tanggal', startD).lte('tanggal', endD)
                 ]);
 
+                const loadData = resLoad.data || [];
                 const infalData = resInfal.data || [];
-                const jadwalData = resJadwal.data || [];
 
-                // 1. Kumpulkan semua nama guru agar tidak ada yang load-nya 0 (Anti Typo)
+                // 1. Kumpulkan semua nama guru agar tidak ada yang terlewat
                 let uniqueTeachers = new Set(globalTeacherList);
-                jadwalData.forEach(j => { if(j.guru) uniqueTeachers.add(j.guru); });
+                loadData.forEach(d => { if(d.nama_guru) uniqueTeachers.add(d.nama_guru); });
                 infalData.forEach(inf => { 
                     if(inf.guru_keluar) uniqueTeachers.add(inf.guru_keluar);
                     if(inf.guru_pengganti) uniqueTeachers.add(inf.guru_pengganti);
                 });
 
-                // 2. 🆕 Hitung Load Mingguan dengan Logika "Kelas Gabungan" (Unique: Guru + Hari + Sesi)
-                let loadMingguan = {};
-                let uniqueSchedules = new Set(); // Buku penyaring kelas dobel
-                
-                jadwalData.forEach(j => {
-                    if (!j.guru) return;
-                    let schedKey = `${j.guru}_${j.hari}_${j.sesi_jp}`; // Kunci unik
-                    
-                    // Kalau kunci ini belum ada di buku penyaring, berarti ini JP baru
-                    if (!uniqueSchedules.has(schedKey)) {
-                        uniqueSchedules.add(schedKey);
-                        loadMingguan[j.guru] = (loadMingguan[j.guru] || 0) + 1;
-                    }
-                });
-
-                // 3. Siapkan Buku Rekening Guru
+                // 2. Siapkan Buku Rekening Guru
                 let mutasi = {};
                 uniqueTeachers.forEach(t => {
-                    mutasi[t] = { nama: t, load: loadMingguan[t] || 0, hutang: 0, bayar: 0 };
+                    let tLoad = loadData.find(ld => ld.nama_guru === t);
+                    mutasi[t] = { 
+                        nama: t, 
+                        load: tLoad ? tLoad.total_load : 0, 
+                        left: 0, 
+                        replace: 0 
+                    };
                 });
 
-                // 4. Kalkulasi Mutasi
+                // 3. Kalkulasi Mutasi Infal
                 infalData.forEach(inf => {
-                    if (inf.guru_keluar && mutasi[inf.guru_keluar]) mutasi[inf.guru_keluar].hutang += 1;
-                    if (inf.guru_pengganti && mutasi[inf.guru_pengganti]) mutasi[inf.guru_pengganti].bayar += 1;
+                    if (inf.guru_keluar && mutasi[inf.guru_keluar]) mutasi[inf.guru_keluar].left += 1;
+                    if (inf.guru_pengganti && mutasi[inf.guru_pengganti]) mutasi[inf.guru_pengganti].replace += 1;
                 });
 
-                // 5. Ubah ke Array, Filter yang punya riwayat/load, lalu Sortir berdasarkan Hutang Tertinggi
-                let finalArr = Object.values(mutasi).filter(m => m.load > 0 || m.hutang > 0 || m.bayar > 0);
-                finalArr.sort((a, b) => (b.hutang - b.bayar) - (a.hutang - a.bayar));
+                // 4. Ubah ke Array, Filter yang punya riwayat/load, lalu Sortir berdasarkan GAP Defisit Terparah
+                let finalArr = Object.values(mutasi).filter(m => m.load > 0 || m.left > 0 || m.replace > 0);
+                finalArr.sort((a, b) => (a.replace - a.left) - (b.replace - b.left));
 
-                // 6. Render ke Layar
+                // 5. Render ke Layar
                 if (finalArr.length > 0) {
                     tbody.innerHTML = finalArr.map(m => {
-                        let saldo = m.hutang - m.bayar;
-                        let statBadge, saldoTextClass;
+                        let gap = m.replace - m.left; // 🆕 RUMUS BARU: REPLACE - LEFT
+                        let statBadge, gapTextClass;
                         
-                        // 🆕 LOGIKA STATUS: OVER, CLEARED, DEFICIT
-                        if (saldo > 0) { // DEFICIT
+                        // 🆕 LOGIKA STATUS BARU: DEFICIT, OVER, CLEARED
+                        if (gap < 0) { // DEFICIT (Hutang > Bayar)
                             statBadge = `<span class="text-[9px] bg-red-100 text-red-600 border border-red-300 px-2 py-1 rounded font-bold uppercase tracking-widest dark:bg-neonpink/20 dark:text-neonpink dark:border-neonpink/50">DEFICIT</span>`;
-                            saldoTextClass = 'text-red-500 dark:text-neonpink font-bold';
-                        } else if (saldo < 0) { // OVER (Lebih banyak menggantikan)
+                            gapTextClass = 'text-red-500 dark:text-neonpink font-bold';
+                        } else if (gap > 0) { // OVER (Bayar > Hutang)
                             statBadge = `<span class="text-[9px] bg-blue-100 text-blue-600 border border-blue-300 px-2 py-1 rounded font-bold uppercase tracking-widest dark:bg-neoncyan/20 dark:text-neoncyan dark:border-neoncyan/50">OVER</span>`;
-                            saldoTextClass = 'text-blue-500 dark:text-neoncyan font-bold';
+                            gapTextClass = 'text-blue-500 dark:text-neoncyan font-bold';
                         } else { // CLEARED (Pas 0)
                             statBadge = `<span class="text-[9px] bg-green-100 text-green-700 border border-green-300 px-2 py-1 rounded font-bold uppercase tracking-widest dark:bg-neongreen/20 dark:text-neongreen dark:border-neongreen/50">CLEARED</span>`;
-                            saldoTextClass = 'text-green-600 dark:text-neongreen font-bold';
+                            gapTextClass = 'text-green-600 dark:text-neongreen font-bold';
                         }
 
                         return `
                         <tr class="hover:bg-blue-50 dark:hover:bg-neoncyan/5 transition-colors">
                             <td class="p-3 border-r custom-border text-xs font-bold text-lighttext dark:text-white">${m.nama}</td>
                             <td class="p-3 border-r custom-border text-center font-mono font-bold text-muted">${m.load}</td>
-                            <td class="p-3 border-r custom-border text-center font-mono font-bold text-red-500">${m.hutang}</td>
-                            <td class="p-3 border-r custom-border text-center font-mono font-bold text-green-600">${m.bayar}</td>
-                            <td class="p-3 border-r custom-border text-center font-mono text-lg ${saldoTextClass}">${saldo}</td>
+                            <td class="p-3 border-r custom-border text-center font-mono font-bold text-red-500">${m.left}</td>
+                            <td class="p-3 border-r custom-border text-center font-mono font-bold text-green-600">${m.replace}</td>
+                            <td class="p-3 border-r custom-border text-center font-mono text-lg ${gapTextClass}">${gap}</td>
                             <td class="p-3 text-center">${statBadge}</td>
                         </tr>`;
                     }).join('');
