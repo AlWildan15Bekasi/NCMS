@@ -1091,8 +1091,22 @@
             <h2 class="text-lg font-bold text-lighttext dark:text-white uppercase tracking-widest mb-4 border-b custom-border pb-2"><i class="fas fa-plus-circle text-neonyellow mr-2"></i> Buat Penilaian Baru</h2>
             
             <div class="space-y-4">
-                <div><label class="block text-[10px] text-muted mb-1 font-bold">Nama Penilaian</label><input type="text" id="new-score-name" class="input-cyber w-full" placeholder="e.g. Kepatuhan Administratif"></div>
-                <div><label class="block text-[10px] text-muted mb-1 font-bold">Periode</label><input type="text" id="new-score-period" class="input-cyber w-full" placeholder="e.g. Semester Genap 2026/2027"></div>
+                <div>
+                    <label class="block text-[10px] text-muted mb-1 font-bold">Kategori Penilaian</label>
+                    <select id="new-score-category" class="input-cyber w-full font-bold">
+                        <option value="Kehadiran Rapat">Kehadiran Rapat</option>
+                        <option value="Pelatihan">Pelatihan</option>
+                        <option value="Administrasi">Administrasi</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] text-muted mb-1 font-bold">Tanggal Pelaksanaan</label>
+                    <input type="date" id="new-score-date" class="input-cyber w-full">
+                </div>
+                <div>
+                    <label class="block text-[10px] text-muted mb-1 font-bold">Periode Akademik</label>
+                    <input type="text" id="new-score-period" class="input-cyber w-full" placeholder="e.g. Semester Genap 2026/2027">
+                </div>
                 <div class="mt-6 flex justify-end">
                     <button class="btn-cyber px-6 py-2 text-xs font-bold tracking-widest uppercase" onclick="saveNewAdditionalScore()">Generate Form</button>
                 </div>
@@ -2806,10 +2820,19 @@
         }
 
         async function saveNewAdditionalScore() {
-            const name = document.getElementById('new-score-name').value, period = document.getElementById('new-score-period').value;
-            if(!name || !period) { showToast('Nama & Periode wajib diisi', 'error'); return; }
+            const cat = document.getElementById('new-score-category').value;
+            const date = document.getElementById('new-score-date').value;
+            const period = document.getElementById('new-score-period').value;
             
-            const fullName = name + " - " + period;
+            if(!cat || !date || !period) { showToast('Kategori, Tanggal, dan Periode wajib diisi!', 'error'); return; }
+            
+            // Rakit tanggal jadi format Indonesia (Misal: 12 Oktober 2026)
+            const d = new Date(date);
+            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            const indoDate = `${String(d.getDate()).padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
+            
+            // Rakit Nama Final
+            const fullName = `${cat} ${indoDate} - ${period}`;
             
             try {
                 const { error } = await supabaseClient.from('master_penilaian_tambahan').insert([{ nama_penilaian_periode: fullName, target: 'Semua Guru' }]);
@@ -2817,6 +2840,8 @@
                     closeModal('add-score-modal'); 
                     loadAdditionalScoreModules();
                     showToast('Modul berhasil dibuat', 'success');
+                } else {
+                    showToast('Gagal membuat modul', 'error');
                 }
             } catch (err) {
                 console.error(err);
@@ -2846,18 +2871,66 @@
             document.getElementById('input-score-subcontext').value = subContext;
             document.getElementById('input-score-raw-title').value = title; 
             
+            // 🆕 DETEKSI KATA KUNCI UNTUK SMART UI
+            let mode = 'STANDARD';
+            if (type === 'Additional') {
+                const titleUpper = title.toUpperCase();
+                if(titleUpper.includes('RAPAT') || titleUpper.includes('PELATIHAN') || titleUpper.includes('RAKER')) mode = 'ATTENDANCE';
+                else if(titleUpper.includes('ADMINISTRASI') || titleUpper.includes('ADMIN')) mode = 'ADMIN';
+            }
+
             let html = '';
             if(target === 'Semua Guru' && globalTeacherList.length > 0) {
                 globalTeacherList.forEach((t, idx) => {
-                    let s = existingScores.find(x => x.nama_guru === t); // Sync mapped
-                    let val = s ? s.skor : ''; let kom = s ? s.komentar : '';
-                    html += `<div class="border custom-border p-3 rounded ${s ? 'bg-blue-50 dark:bg-neoncyan/10 border-blue-500 dark:border-neoncyan' : 'bg-gray-50 dark:bg-darkbg hover:border-blue-500'} transition mb-2">
-                        <div class="flex justify-between items-center mb-2"><span class="text-xs font-bold text-lighttext dark:text-gray-200"><input type="hidden" class="inpscore_name" value="${t}">${t}</span><input type="number" class="inpscore_val w-16 bg-transparent border-b border-gray-400 dark:border-gray-600 text-center font-mono outline-none focus:border-neoncyan text-sm font-bold text-blue-600 dark:text-neoncyan" placeholder="Nilai" value="${val}"></div>
-                        <div class="flex gap-2 items-start mt-2"><i class="fas fa-sticky-note text-neonyellow mt-1 text-[10px]"></i><textarea class="inpscore_kom flex-1 bg-transparent border-b border-gray-300 dark:border-gray-700 text-[10px] text-lighttext dark:text-gray-300 outline-none resize-none h-8" placeholder="Tambahkan catatan khusus/feedback di sini...">${kom || ''}</textarea></div>
+                    let s = existingScores.find(x => x.nama_guru === t); 
+                    let val = s ? s.skor : ''; 
+                    let kom = s ? s.komentar : '';
+                    let status = s ? s.status_kehadiran : '';
+                    let menit = s ? s.menit_telat : '';
+                    
+                    let dynamicUI = '';
+                    if(mode === 'ATTENDANCE') {
+                        dynamicUI = `
+                            <div class="flex gap-4 mb-3 flex-wrap items-center mt-2 border-t custom-border pt-2">
+                                <label class="text-[10px] flex items-center gap-1 cursor-pointer font-bold transition-colors ${status==='Present'?'text-neongreen':'text-muted'}"><input type="radio" name="stat_${idx}" value="Present" ${status==='Present'?'checked':''} class="hidden" onchange="calcAdditionalScore(${idx}, 'ATTENDANCE')"> <i class="fas ${status==='Present'?'fa-check-circle':'fa-circle'}"></i> Present</label>
+                                <label class="text-[10px] flex items-center gap-1 cursor-pointer font-bold transition-colors ${status==='Late'?'text-neonyellow':'text-muted'}"><input type="radio" name="stat_${idx}" value="Late" ${status==='Late'?'checked':''} class="hidden" onchange="calcAdditionalScore(${idx}, 'ATTENDANCE')"> <i class="fas ${status==='Late'?'fa-check-circle':'fa-circle'}"></i> Late</label>
+                                <label class="text-[10px] flex items-center gap-1 cursor-pointer font-bold transition-colors ${status==='Perm/Sick'?'text-neoncyan':'text-muted'}"><input type="radio" name="stat_${idx}" value="Perm/Sick" ${status==='Perm/Sick'?'checked':''} class="hidden" onchange="calcAdditionalScore(${idx}, 'ATTENDANCE')"> <i class="fas ${status==='Perm/Sick'?'fa-check-circle':'fa-circle'}"></i> Perm/Sick</label>
+                                <label class="text-[10px] flex items-center gap-1 cursor-pointer font-bold transition-colors ${status==='Absent'?'text-neonpink':'text-muted'}"><input type="radio" name="stat_${idx}" value="Absent" ${status==='Absent'?'checked':''} class="hidden" onchange="calcAdditionalScore(${idx}, 'ATTENDANCE')"> <i class="fas ${status==='Absent'?'fa-check-circle':'fa-circle'}"></i> Absent</label>
+                                
+                                <div class="ml-auto items-center gap-2 ${status==='Late'?'flex':'hidden'}" id="late_box_${idx}">
+                                    <span class="text-[9px] text-muted font-bold uppercase tracking-widest">Menit Telat:</span>
+                                    <input type="number" id="menit_${idx}" class="inpscore_menit w-12 bg-transparent border-b border-neonyellow text-center font-mono outline-none text-xs text-neonyellow font-bold" value="${menit}" oninput="calcAdditionalScore(${idx}, 'ATTENDANCE')">
+                                </div>
+                            </div>
+                        `;
+                    } else if(mode === 'ADMIN') {
+                        dynamicUI = `
+                            <div class="flex gap-4 mb-3 flex-wrap items-center mt-2 border-t custom-border pt-2">
+                                <label class="text-[10px] flex items-center gap-1 cursor-pointer font-bold transition-colors ${status==='On Time'?'text-neongreen':'text-muted'}"><input type="radio" name="stat_${idx}" value="On Time" ${status==='On Time'?'checked':''} class="hidden" onchange="calcAdditionalScore(${idx}, 'ADMIN')"> <i class="fas ${status==='On Time'?'fa-check-circle':'fa-circle'}"></i> On Time</label>
+                                <label class="text-[10px] flex items-center gap-1 cursor-pointer font-bold transition-colors ${status==='Late'?'text-neonyellow':'text-muted'}"><input type="radio" name="stat_${idx}" value="Late" ${status==='Late'?'checked':''} class="hidden" onchange="calcAdditionalScore(${idx}, 'ADMIN')"> <i class="fas ${status==='Late'?'fa-check-circle':'fa-circle'}"></i> Late</label>
+                                
+                                <div class="ml-auto items-center gap-2 ${status==='Late'?'flex':'hidden'}" id="late_box_${idx}">
+                                    <span class="text-[9px] text-muted font-bold uppercase tracking-widest">Menit Telat:</span>
+                                    <input type="number" id="menit_${idx}" class="inpscore_menit w-12 bg-transparent border-b border-neonyellow text-center font-mono outline-none text-xs text-neonyellow font-bold" value="${menit}" oninput="calcAdditionalScore(${idx}, 'ADMIN')">
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    html += `<div class="border custom-border p-3 rounded ${s ? 'bg-blue-50 dark:bg-neoncyan/10 border-blue-500 dark:border-neoncyan' : 'bg-gray-50 dark:bg-darkbg hover:border-blue-500'} transition mb-2" id="score_row_${idx}">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-bold text-lighttext dark:text-gray-200"><input type="hidden" class="inpscore_name" value="${t}">${t}</span>
+                            <input type="number" id="skor_${idx}" class="inpscore_val w-16 bg-transparent border-b border-gray-400 dark:border-gray-600 text-center font-mono outline-none focus:border-neoncyan text-sm font-bold text-blue-600 dark:text-neoncyan" placeholder="Nilai" value="${val}" ${mode !== 'STANDARD' ? 'readonly' : ''}>
+                        </div>
+                        ${dynamicUI}
+                        <div class="flex gap-2 items-start mt-2">
+                            <i class="fas fa-sticky-note text-neonyellow mt-1 text-[10px]"></i>
+                            <textarea class="inpscore_kom flex-1 bg-transparent border-b border-gray-300 dark:border-gray-700 text-[10px] text-lighttext dark:text-gray-300 outline-none resize-none h-8" placeholder="Tambahkan catatan khusus/feedback di sini...">${kom || ''}</textarea>
+                        </div>
                     </div>`;
                 });
             } else if (target !== 'Semua Guru') {
-                // Untuk Event / Komisi yang targetnya PIC tunggal
+                // Untuk Event / Komisi
                 let val = existingScores.length > 0 ? existingScores[0].skor : '';
                 let kom = existingScores.length > 0 ? existingScores[0].komentar : '';
                 html += `<div class="border custom-border p-3 rounded ${val ? 'bg-blue-50 dark:bg-neoncyan/10 border-blue-500 dark:border-neoncyan' : 'bg-gray-50 dark:bg-darkbg hover:border-blue-500'} transition mb-2">
@@ -2867,6 +2940,65 @@
             } else { html += `<p class="text-center text-muted italic text-xs">Belum ada daftar guru/target yang tersedia.</p>`; }
             
             document.getElementById('input-score-body').innerHTML = html; openModal('input-score-modal');
+        }        
+        
+        // 🆕 FUNGSI AUTO-CALCULATE (OTAK MATEMATIKA)
+        function calcAdditionalScore(idx, mode) {
+            let statRadios = document.getElementsByName(`stat_${idx}`);
+            let statVal = '';
+            
+            // Update warna UI dan Icon Radio
+            statRadios.forEach(r => { 
+                let lbl = r.parentElement;
+                let icon = lbl.querySelector('i');
+                if(r.checked) {
+                    statVal = r.value; 
+                    let color = r.value==='Absent' ? 'text-neonpink' : (r.value==='Perm/Sick' ? 'text-neoncyan' : (r.value==='Late' ? 'text-neonyellow' : 'text-neongreen'));
+                    lbl.classList.remove('text-muted'); lbl.classList.add(color);
+                    icon.classList.replace('fa-circle', 'fa-check-circle');
+                } else {
+                    lbl.classList.remove('text-neongreen','text-neonyellow','text-neoncyan','text-neonpink');
+                    lbl.classList.add('text-muted');
+                    icon.classList.replace('fa-check-circle', 'fa-circle');
+                }
+            });
+            
+            let lateBox = document.getElementById(`late_box_${idx}`);
+            let menitInput = document.getElementById(`menit_${idx}`);
+            let scoreInput = document.getElementById(`skor_${idx}`);
+            
+            // Buka/Tutup kotak menit
+            if(statVal === 'Late') { lateBox.classList.replace('hidden', 'flex'); } 
+            else { lateBox.classList.replace('flex', 'hidden'); menitInput.value = ''; }
+            
+            // Hitung Skor
+            let score = 0;
+            if (mode === 'ATTENDANCE') {
+                if (statVal === 'Present') score = 100;
+                else if (statVal === 'Perm/Sick') score = 80;
+                else if (statVal === 'Absent') score = 60;
+                else if (statVal === 'Late') {
+                    let m = parseInt(menitInput.value) || 0;
+                    score = 100 - (m * 2);
+                    if (score < 0) score = 0;
+                }
+            } else if (mode === 'ADMIN') {
+                if (statVal === 'On Time') score = 100;
+                else if (statVal === 'Late') {
+                    let m = parseInt(menitInput.value) || 0;
+                    let jam = m / 60;
+                    score = Math.round(100 - (jam * 2));
+                    if (score < 0) score = 0;
+                }
+            }
+            
+            // Kunci Nilai & Nyalakan Lampu Kotak (Tandanya sudah direspon)
+            if(statVal !== '') {
+                scoreInput.value = score;
+                let row = document.getElementById(`score_row_${idx}`);
+                row.classList.remove('bg-gray-50', 'dark:bg-darkbg');
+                row.classList.add('bg-blue-50', 'dark:bg-neoncyan/10', 'border-blue-500', 'dark:border-neoncyan');
+            }
         }        
         
         async function submitManualScore() {
@@ -2881,28 +3013,40 @@
                 let val = r.querySelector('.inpscore_val')?.value; 
                 let kom = r.querySelector('.inpscore_kom')?.value;
                 
-                // MENCEGAH PAKET KOSONG: Hanya simpan jika guru tsb ada nilainya!
+                // 🆕 TANGKAP STATUS DAN MENIT (JIKA ADA)
+                let statRadio = r.querySelector('input[type="radio"]:checked');
+                let statusKehadiran = statRadio ? statRadio.value : null;
+                let menitTelat = r.querySelector('.inpscore_menit') ? (parseInt(r.querySelector('.inpscore_menit').value) || null) : null;
+                
                 if(name && val && val.trim() !== "") { 
                     if (type === 'Additional') {
-                        scoresArr.push({ nama_penilaian_periode: rawTitle, nama_guru: name, skor: parseInt(val), komentar: kom }); 
+                        scoresArr.push({ 
+                            nama_penilaian_periode: rawTitle, 
+                            nama_guru: name, 
+                            skor: parseInt(val), 
+                            komentar: kom,
+                            status_kehadiran: statusKehadiran, // 🆕 Kirim ke Supabase
+                            menit_telat: menitTelat           // 🆕 Kirim ke Supabase
+                        }); 
                     } else if (type === 'LeaderEvent') {
                         updatePromises.push(
                             supabaseClient.from('data_event')
                                 .update({ skor_management: parseInt(val), catatan_management: kom })
-                                .eq('nama_event', rawTitle) // Gunakan judul mentah
+                                .eq('nama_event', rawTitle) 
                                 .eq('pic_guru', name)
                         );
                     } else if (type === 'LeaderComm') {
                         updatePromises.push(
                             supabaseClient.from('data_commission')
                                 .update({ skor_management: parseInt(val), catatan_management: kom })
-                                .eq('tipe_komisi', rawTitle) // Gunakan judul mentah
+                                .eq('tipe_komisi', rawTitle) 
                                 .eq('pic_guru', name)
                         );
                     }
                 }
             });
 
+            // (SISA KODE DI BAWAHNYA TETAP SAMA: if(scoresArr.length > 0 || updatePromises.length > 0) { ... })
             if(scoresArr.length > 0 || updatePromises.length > 0) { 
                 const btn = document.getElementById('btn-submit-score'); 
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SAVING...'; 
@@ -2912,7 +3056,6 @@
                     let hasError = false;
                     
                     if (type === 'Additional' && scoresArr.length > 0) {
-                        // Gunakan upsert dengan patokan konflik KTP ganda (Judul + Nama Guru)
                         const { error } = await supabaseClient.from('log_additional_score').upsert(scoresArr, { onConflict: 'nama_penilaian_periode, nama_guru' });
                         if (error) { hasError = true; console.error(error); showToast('Gagal menyimpan Additional Score: ' + error.message, 'error'); }
                     } else if ((type === 'LeaderEvent' || type === 'LeaderComm') && updatePromises.length > 0) {
@@ -2924,13 +3067,13 @@
 
                     if(!hasError) { 
                         showToast('Data Nilai Berhasil Tersimpan', 'success'); 
-                        closeModal('input-score-modal'); // Auto Close
+                        closeModal('input-score-modal'); 
                         
                         if(type === 'Additional') {
                             loadAdditionalScoreModules(); 
                         }
                         else if(type === 'LeaderEvent' || type === 'LeaderComm') {
-                            updateCardVisual(type, rawTitle); // Ganti Baju Neon
+                            updateCardVisual(type, rawTitle); 
                         }
                     }
                 } catch (err) {
