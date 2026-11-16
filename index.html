@@ -1213,7 +1213,7 @@
                 <!-- 🆕 TAMBAHAN BARU: Kotak Centang Kelas -->
                 <div>
                     <label class="block text-[10px] text-neoncyan font-bold mb-2 uppercase tracking-widest border-b custom-border pb-1">Target Kelas (Kosongkan jika Libur Nasional)</label>
-                    <div id="cico-off-class-list" class="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto custom-scrollbar p-3 custom-bg-alt rounded-lg border custom-border">
+                    <div id="cico-off-class-list" class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar p-3 custom-bg-alt rounded-lg border custom-border">
                         <p class="text-[10px] text-muted italic col-span-full">Memuat kelas...</p>
                     </div>
                 </div>
@@ -1964,13 +1964,13 @@
             
             try {
                 // TAHAP 1: Cek Hari Libur
-                const { data: holidays } = await supabaseClient.from('pengaturan_hari_libur')
-                    .select('*')
-                    .lte('tanggal_mulai', targetDate)
-                    .gte('tanggal_selesai', targetDate);
+                const { data: holidays } = await supabaseClient.from('pengaturan_hari_libur').select('*').lte('tanggal_mulai', targetDate).gte('tanggal_selesai', targetDate);
 
-                if (holidays && holidays.length > 0) {
-                    tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 italic text-green-500 font-bold"><i class="fas fa-umbrella-beach"></i> Clear! Hari ini libur (${holidays[0].keterangan}).</td></tr>`;
+                // Cek apakah ada libur Nasional (Array kosong)
+                let isGlobalHoliday = holidays && holidays.some(h => !h.kelas_pengecualian || h.kelas_pengecualian.length === 0);
+
+                if (isGlobalHoliday) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 italic text-green-500 font-bold"><i class="fas fa-umbrella-beach"></i> Clear! Hari ini libur nasional.</td></tr>`;
                     return;
                 }
 
@@ -2009,6 +2009,9 @@
                 let missingList = [];
 
                 jadwalData.forEach(j => {
+                    // Cek pakai Helper Cerdas (Apakah Kelas ini & Sesi ini lagi ujian?)
+                    if(isClassSessionExempted(holidays, j.kelas, j.sesi_jp)) return; // SKIP GURU INI!
+
                     let expectedTeacher = j.guru;
                     let statusSource = "Jadwal Aktif";
 
@@ -2097,6 +2100,9 @@
                         let dayCicos = cicoData.filter(c => c.tanggal === dateStr);
 
                         daySchedules.forEach(j => {
+                            // Cek pakai Helper Cerdas
+                            if(isClassSessionExempted(dailyHolidays, j.kelas, j.sesi_jp)) return; // SKIP GURU INI!
+
                             let expectedTeacher = j.guru;
                             let statusSource = "Jadwal Asli";
 
@@ -2179,18 +2185,65 @@
             htmlContent += `</ul>`;
             showCustomAlert(htmlContent);
         }
-        
+
+        // 🆕 HELPER: Mengecek apakah suatu Kelas & JP sedang libur/dikecualikan
+        function isClassSessionExempted(liburData, targetKelas, targetJp) {
+            if (!liburData || liburData.length === 0) return false;
+            
+            for (let libur of liburData) {
+                // Jika array kosong (Libur Nasional)
+                if (!libur.kelas_pengecualian || libur.kelas_pengecualian.length === 0) return true;
+                
+                // Jika parsial, cek rule-nya ("6 INTER 1|ALL" atau "6 INTER 1|JP 1,JP 2")
+                for (let rule of libur.kelas_pengecualian) {
+                    let parts = rule.split('|');
+                    let ruleKelas = parts[0];
+                    let ruleJps = parts[1] || 'ALL';
+                    
+                    if (ruleKelas === targetKelas) {
+                        if (ruleJps === 'ALL') return true;
+                        if (ruleJps.includes(targetJp)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // 🆕 HELPER UI: Buka tutup kotak Sesi JP
+        window.toggleCicoJpBox = function(idx) {
+            let classCb = document.getElementById(`cb-class-${idx}`);
+            let jpBox = document.getElementById(`jp-box-${idx}`);
+            let jpCbs = document.querySelectorAll(`.cb-jp-${idx}`);
+            
+            if (classCb.checked) {
+                jpBox.classList.replace('hidden', 'flex');
+                jpCbs.forEach(cb => cb.checked = true); // Auto-Select All JP
+            } else {
+                jpBox.classList.replace('flex', 'hidden');
+                jpCbs.forEach(cb => cb.checked = false); // Clear
+            }
+        };
         
         // Misi 4: Fitur CICO OFF Save
        // 🆕 Fungsi khusus buka modal & merender checkbox kelas
         function openCicoOffModal() {
             const container = document.getElementById('cico-off-class-list');
             if (globalClassesList.length > 0) {
-                container.innerHTML = globalClassesList.map(c => `
-                    <label class="flex items-center gap-2 cursor-pointer group">
-                        <input type="checkbox" value="${c.nama}" class="cico-off-cb w-4 h-4 text-neoncyan bg-gray-100 border-gray-300 rounded focus:ring-neoncyan dark:focus:ring-neoncyan dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
-                        <span class="text-[10px] font-bold text-lighttext dark:text-gray-300 group-hover:text-neoncyan transition truncate">${c.nama}</span>
-                    </label>
+                container.innerHTML = globalClassesList.map((c, idx) => `
+                    <div class="p-2 border custom-border rounded bg-gray-50 dark:bg-darkbg h-fit">
+                        <label class="flex items-center gap-2 cursor-pointer group">
+                            <input type="checkbox" value="${c.nama}" id="cb-class-${idx}" class="cico-off-cb w-4 h-4 text-neoncyan bg-gray-100 border-gray-300 rounded focus:ring-neoncyan dark:focus:ring-neoncyan dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600" onchange="toggleCicoJpBox(${idx})">
+                            <span class="text-xs font-bold text-lighttext dark:text-gray-300 group-hover:text-neoncyan transition truncate">${c.nama}</span>
+                        </label>
+                        <div id="jp-box-${idx}" class="hidden flex-wrap gap-1.5 mt-2 border-t custom-border pt-2">
+                            ${[1,2,3,4,5,6].map(j => `
+                                <label class="flex items-center gap-1 cursor-pointer bg-white dark:bg-[#050a15] px-1.5 py-0.5 rounded border custom-border">
+                                    <input type="checkbox" value="JP ${j}" class="cb-jp-${idx} w-3 h-3 text-neonyellow bg-gray-100 border-gray-300 rounded focus:ring-neonyellow dark:focus:ring-neonyellow dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+                                    <span class="text-[8px] font-bold text-muted uppercase">JP ${j}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
                 `).join('');
             } else {
                 container.innerHTML = `<p class="text-[10px] text-red-500 italic col-span-full">Data kelas kosong, pastikan sudah klik Sync.</p>`;
@@ -2206,28 +2259,32 @@
             
             if(!s || !e || !d) { showToast('Isi semua field untuk set hari libur/pengecualian', 'error'); return; }
             
-            // Tangkap semua checkbox yang dicentang
-            const checkboxes = document.querySelectorAll('.cico-off-cb:checked');
-            let selectedClasses = Array.from(checkboxes).map(cb => cb.value); // Hasilnya: ["1 SMA", "2 SMA"] atau [] jika kosong
+            // Tangkap semua checkbox Kelas yang dicentang
+            const classCheckboxes = document.querySelectorAll('.cico-off-cb:checked');
+            let selectedClasses = [];
+            
+            classCheckboxes.forEach(cb => {
+                let className = cb.value;
+                let idx = cb.id.split('-')[2]; // Ekstrak nomor index
+                let jpCbs = document.querySelectorAll(`.cb-jp-${idx}:checked`); // Ambil centangan JP-nya
+                
+                if (jpCbs.length === 6) {
+                    selectedClasses.push(`${className}|ALL`); // Full day
+                } else if (jpCbs.length > 0) {
+                    let jpArr = Array.from(jpCbs).map(j => j.value);
+                    selectedClasses.push(`${className}|${jpArr.join(',')}`); // Parsial
+                }
+            });
             
             try {
-                // Tembak ke Supabase dengan tambahan kolom array
                 const { error } = await supabaseClient.from('pengaturan_hari_libur').insert([{ 
-                    tanggal_mulai: s, 
-                    tanggal_selesai: e, 
-                    keterangan: d,
-                    kelas_pengecualian: selectedClasses
+                    tanggal_mulai: s, tanggal_selesai: e, keterangan: d, kelas_pengecualian: selectedClasses
                 }]);
                 
                 if(!error) { 
-                    showToast('Pengecualian CICO Berhasil Disimpan', 'success'); 
-                    closeModal('cico-off-modal');
-                    // Reset field
-                    document.getElementById('cico-off-start').value = '';
-                    document.getElementById('cico-off-end').value = '';
-                    document.getElementById('cico-off-desc').value = '';
-                }
-                else { showToast('Gagal simpan pengecualian', 'error'); console.error(error); }
+                    showToast('Pengecualian CICO Berhasil Disimpan', 'success'); closeModal('cico-off-modal');
+                    document.getElementById('cico-off-start').value = ''; document.getElementById('cico-off-end').value = ''; document.getElementById('cico-off-desc').value = '';
+                } else { showToast('Gagal simpan pengecualian', 'error'); console.error(error); }
             } catch(err) { console.error(err); }
         }
 
@@ -2428,12 +2485,11 @@
                 }
 
                 let busyTeachers = [];
-                
-                // 3. Seleksi Guru Sibuk yg REAL (Buang yg kelasnya lagi ujian)
-                if(!isGlobalHoliday && busyData) {
+                // 3. Seleksi Guru Sibuk yg REAL (Buang yg kelas & Sesi JP-nya lagi ujian/libur)
+                if(busyData) {
                     busyData.forEach(d => {
-                        // Jika kelas si guru TIDAK ADA di keranjang pengecualian, barulah dia dianggap sibuk
-                        if(!exceptionClasses.includes(d.kelas)) {
+                        let isExempted = isClassSessionExempted(liburData, d.kelas, selectedJp);
+                        if(!isExempted) {
                             busyTeachers.push(d.guru);
                         }
                     });
@@ -3761,9 +3817,13 @@
                         let isNasional = !d.kelas_pengecualian || d.kelas_pengecualian.length === 0;
                         
                         let targetBadge = isNasional 
-                            ? `<span class="text-[9px] bg-red-100 dark:bg-neonpink/20 text-red-600 dark:text-neonpink border border-red-200 dark:border-neonpink/50 px-2 py-0.5 rounded font-bold uppercase">LIBUR NASIONAL (Semua)</span>`
-                            : `<span class="text-[9px] bg-blue-100 dark:bg-neoncyan/20 text-blue-600 dark:text-neoncyan border border-blue-200 dark:border-neoncyan/50 px-2 py-0.5 rounded font-bold uppercase">PARSIAL (${d.kelas_pengecualian.length} Kelas)</span><br><span class="text-[10px] text-muted italic mt-1 inline-block">${d.kelas_pengecualian.join(', ')}</span>`;
-
+                            ? `<span class="text-[9px] bg-red-100 dark:bg-neonpink/20 text-red-600 dark:text-neonpink border border-red-200 dark:border-neonpink/50 px-2 py-0.5 rounded font-bold uppercase">LIBUR NASIONAL</span>`
+                            : `<div class="max-h-24 overflow-y-auto custom-scrollbar text-left flex flex-wrap gap-1">` + 
+                              d.kelas_pengecualian.map(k => {
+                                  let parts = k.split('|');
+                                  return `<span class="text-[9px] bg-blue-100 dark:bg-neoncyan/20 text-blue-600 dark:text-neoncyan border border-blue-200 dark:border-neoncyan/50 px-2 py-0.5 rounded font-bold uppercase truncate" title="${parts[0]} - ${parts[1]||'ALL'}">${parts[0]} <span class="text-muted lowercase">(${parts[1] === 'ALL' ? 'full' : 'parsial'})</span></span>`;
+                              }).join('') + `</div>`;
+                        
                         // Rapikan format tampilan tanggal
                         let dateRange = d.tanggal_mulai === d.tanggal_selesai 
                             ? formatDate(d.tanggal_mulai) 
