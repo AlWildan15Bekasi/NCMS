@@ -3179,14 +3179,12 @@
 
         async function saveEventToAPI() {
             const cat = document.getElementById('event-category')?.value;
-            const payload = { 
-                tanggal_pelaksanaan: document.getElementById('event-date').value, 
-                nama_event: document.getElementById('event-name').value, 
-                pic_guru: document.getElementById('event-pic').value 
-            };
+            const date = document.getElementById('event-date').value;
+            const name = document.getElementById('event-name').value;
+            const pic = document.getElementById('event-pic').value;
             
-            if(!cat || !payload.tanggal_pelaksanaan || !payload.nama_event || !payload.pic_guru) { 
-                showToast('Lengkapi form event dan pilih kategori', 'error'); 
+            if(!cat || !date || !name || !pic) { 
+                showToast('Lengkapi form event dan pilih kategorinya', 'error'); 
                 return; 
             }
             
@@ -3195,11 +3193,18 @@
             btn.disabled = true;
             
             try {
-                // 1. Simpan identitas event ke tabel 'data_event'
-                const { error: errEvent } = await supabaseClient.from('data_event').insert([payload]);
-                if(errEvent) throw errEvent;
+                // 1. Simpan Identitas Event (beserta Kategorinya) ke tabel 'data_event'
+                const payloadEvent = { 
+                    tanggal_pelaksanaan: date, 
+                    nama_event: name, 
+                    pic_guru: pic,
+                    kategori_event: cat // 🆕 Kolom baru yang baru aja kamu tambahin
+                };
                 
-                // 2. Tarik SOP dari 'master_template_action_plan' berdasarkan kategori
+                const { error: errEvent } = await supabaseClient.from('data_event').insert([payloadEvent]);
+                if (errEvent) throw errEvent;
+                
+                // 2. Tarik SOP (Resep Tugas) dari 'master_template_action_plan' berdasarkan Kategori
                 const { data: templates, error: errTemp } = await supabaseClient
                     .from('master_template_action_plan')
                     .select('*')
@@ -3207,24 +3212,27 @@
                 
                 if (errTemp) throw errTemp;
                 
-                // 3. Jika ada template di Supabase, rakit lalu tembak ke 'event_action_plan'
+                // 3. Jika ada template di Supabase, rakit dan suntikkan ke 'event_action_plan'
                 if (templates && templates.length > 0) {
                     const payloadTasks = templates.map(t => ({
-                        nama_event: payload.nama_event,
+                        nama_event: name,
                         divisi: t.divisi,
                         rencana_tugas: t.rencana_tugas,
-                        status: 'Belum Mulai' // Status default tugas baru
+                        status: 'Belum Mulai' // Status awal tugas
                     }));
                     
+                    // Fire & forget ke event_action_plan
                     const { error: errTasks } = await supabaseClient.from('event_action_plan').insert(payloadTasks);
                     if (errTasks) console.warn("Peringatan: Gagal memuat template action plan", errTasks);
                 }
 
+                // 4. Sukses! Refresh UI.
                 showToast('Event & Template Action Plan Berhasil Dibuat!', 'success'); 
                 
-                // Reset form
                 document.getElementById('event-category').value = '';
+                document.getElementById('event-date').value = '';
                 document.getElementById('event-name').value = ''; 
+                document.getElementById('event-pic').value = '';
                 
                 loadEventData(); 
                 loadLeaderEventData();
